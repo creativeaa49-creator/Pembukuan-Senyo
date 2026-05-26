@@ -1,0 +1,90 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+/* Premium Dark Mode scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #020617; /* slate-950 */
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b; /* slate-800 */
+  border-radius: 999px;
+  border: 2px solid #020617;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #db2777; /* pink-600 */
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleUp {
+  from { transform: scale(0.97); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale-up {
+  animation: scaleUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Print Mode overrides for neat reports generation */
+@media print {
+  body, html {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+    margin: 1.5cm !important;
+  }
+  
+  .print\:hidden,
+  header,
+  footer,
+  aside,
+  button {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  #app-root-shell, 
+  #print-area-content,
+  #event-detail-card {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Grid adjustment for print */
+  #active-gallery-grid {
+    grid-template-cols: repeat(2, minmax(0, 1fr)) !important;
+    gap: 15px !important;
+    page-break-inside: avoid;
+  }
+
+  #photo-preview-grid,
+  #active-gallery-grid {
+    page-break-inside: avoid;
+  }
+}
+

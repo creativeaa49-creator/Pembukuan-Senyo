@@ -1,0 +1,6 @@
+{
+  "name": "Pendataan Pekerjaan",
+  "description": "Aplikasi pencatatan kegiatan dan pendataan pekerjaan mandiri lengkap dengan dokumentasi foto, pengelolaan tim, dan statistik log aktivitas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -141,7 +141,74 @@ export function MonthlyCalculator({ events }: MonthlyCalculatorProps) {
   };
 
   // Google Apps Script template code (No Rate Column)
-  const googleAppsScriptCode = `function doPost(e) {
+  const googleAppsScriptCode = `function doGet(e) {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var lastRow = sheet.getLastRow();
+    var events = [];
+    
+    if (lastRow > 1) {
+      var range = sheet.getRange(2, 1, lastRow - 1, 8);
+      var values = range.getValues();
+      
+      for (var i = 0; i < values.length; i++) {
+        var row = values[i];
+        if (!row[0]) continue; // Skip empty rows
+        
+        // Parse "Tanggal Main" (e.g., "2026-05-25")
+        var dateVal = row[1];
+        if (dateVal instanceof Date) {
+          var yearStr = dateVal.getFullYear();
+          var monthStr = ("0" + (dateVal.getMonth() + 1)).slice(-2);
+          var dayStr = ("0" + dateVal.getDate()).slice(-2);
+          dateVal = yearStr + "-" + monthStr + "-" + dayStr;
+        } else {
+          dateVal = String(dateVal);
+        }
+        
+        // Parse day, month, year
+        var parts = dateVal.split("-");
+        var day = parseInt(parts[2]) || new Date().getDate();
+        var month = parseInt(parts[1]) || (new Date().getMonth() + 1);
+        var year = parseInt(parts[0]) || new Date().getFullYear();
+        
+        // Parse kru
+        var teamStr = String(row[5] || "");
+        var teamArr = [];
+        if (teamStr && teamStr !== "Mandiri" && teamStr !== "Mandiri (tidak ada tim)") {
+          teamArr = teamStr.split(",").map(function(t) { return t.trim(); });
+        }
+        
+        events.push({
+          id: String(row[0] || ""),
+          date: dateVal,
+          day: day,
+          month: month,
+          year: year,
+          eventName: String(row[3] || ""),
+          location: String(row[4] || ""),
+          team: teamArr,
+          notes: String(row[6] || ""),
+          status: "Selesai",
+          createdAt: new Date().toISOString()
+        });
+      }
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "success",
+      events: events
+    })).setMimeType(ContentService.MimeType.JSON);
+    
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      message: err.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doPost(e) {
   try {
     var rawData = e.postData.contents;
     var data = JSON.parse(rawData);
@@ -168,10 +235,23 @@ export function MonthlyCalculator({ events }: MonthlyCalculatorProps) {
       headerRange.setFontColor("#ffffff");
     }
     
-    // Mulai append row data gawean satu-satu
+    // Mulai append atau update row data gawean
     if (data.events && Array.isArray(data.events)) {
       data.events.forEach(function(ev) {
-        sheet.appendRow([
+        var idToFind = ev.id;
+        var existingRowIndex = -1;
+        
+        if (sheet.getLastRow() > 1) {
+          var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+          for (var r = 0; r < ids.length; r++) {
+            if (String(ids[r][0]) === String(idToFind)) {
+              existingRowIndex = r + 2; // +2 offset for header (1) and indexing (1)
+              break;
+            }
+          }
+        }
+        
+        var rowData = [
           ev.id,
           ev.date,
           ev.month + "/" + ev.year,
@@ -180,7 +260,16 @@ export function MonthlyCalculator({ events }: MonthlyCalculatorProps) {
           ev.team && ev.team.length ? ev.team.join(", ") : "Mandiri",
           ev.notes || "",
           new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })
-        ]);
+        ];
+        
+        if (existingRowIndex !== -1) {
+          // Update existing row
+          var rowRange = sheet.getRange(existingRowIndex, 1, 1, 8);
+          rowRange.setValues([rowData]);
+        } else {
+          // Append new row
+          sheet.appendRow(rowData);
+        }
       });
     }
     

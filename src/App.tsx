@@ -18,7 +18,9 @@ import {
   DatabaseBackup,
   Undo2,
   AlertTriangle,
-  FileText
+  FileText,
+  RefreshCw,
+  Cloud
 } from 'lucide-react';
 import { JobEvent, Teammate } from './types';
 import { 
@@ -62,6 +64,8 @@ export default function App() {
       try {
         await seedInitialDataIfNeeded();
         await loadAllData();
+        // Auto-fetch/pull newest rows from Google Sheet to sync devices on start
+        await syncPullFromGoogleSheets(true);
       } catch (err) {
         console.error('Error initializing database:', err);
       } finally {
@@ -76,6 +80,42 @@ export default function App() {
     const tms = await getAllTeammates();
     setEvents(evs);
     setTeammates(tms);
+  };
+
+  const syncPullFromGoogleSheets = async (silent = true): Promise<void> => {
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxVeO7jxIDa5fwJT9x17vjEnRL2KXj_7kDB36EVjdq7G4CtAfPpl4NwnNrki3jp3KTakQ/exec';
+    const storedUrl = localStorage.getItem('senyo_google_sheet_url') || DEFAULT_SHEET_URL;
+    if (!storedUrl) return;
+
+    if (!silent) setIsLoading(true);
+    try {
+      const response = await fetch(`${storedUrl}?t=${Date.now()}`);
+      if (!response.ok) throw new Error('Response non-ok');
+      
+      const resData = await response.json();
+      if (resData && resData.status === 'success' && Array.isArray(resData.events)) {
+        let importedCount = 0;
+        
+        for (const ev of resData.events) {
+          await saveEvent(ev);
+          importedCount++;
+        }
+        
+        await loadAllData();
+        if (importedCount > 0 && !silent) {
+          showToast(`Sinkronisasi sukses! ${importedCount} data ditarik dari Google Sheets! 🚀`);
+        } else if (!silent) {
+          showToast('Database Google Sheets sinkron dengan device ini!');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to pull from Google Sheets:', err);
+      if (!silent) {
+        showToast('Gagal memuat data dari Sheets. Pastikan Web App dideploy dengan benar.');
+      }
+    } finally {
+      if (!silent) setIsLoading(false);
+    }
   };
 
   const showToast = (message: string) => {
@@ -302,6 +342,16 @@ export default function App() {
             <div className="bg-slate-950/85 border border-slate-800 px-3 py-2 rounded-xl text-slate-400 font-black text-[10px] uppercase tracking-wider hidden sm:block">
               {new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
             </div>
+
+            {/* Sync Cloud Download Button */}
+            <button
+              onClick={() => syncPullFromGoogleSheets(false)}
+              className="h-10 px-3.5 bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-800/60 rounded-xl text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5 transition-all cursor-pointer animate-pulse hover:animate-none"
+              title="Ambil dan sinkronkan data terbaru dari Google Sheets"
+            >
+              <RefreshCw className="w-4 h-4 text-emerald-400" />
+              <span>Sinkronkan</span>
+            </button>
 
             {/* Roster management button */}
             <button

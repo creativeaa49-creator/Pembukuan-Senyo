@@ -704,8 +704,8 @@ function doPost(e) {
           .print\\:hidden, 
           .no-print,
           #monthly-calc-settings,
-          #app-main-content-layout > :not(.space-y-3), 
-          #app-main-content-layout > .space-y-3 > :not(#a4-printable-sheet) {
+          #monthly-calculator-panel > :not(.space-y-3), 
+          #monthly-calculator-panel > .space-y-3 > :not(#a4-printable-sheet) {
             display: none !important;
           }
 

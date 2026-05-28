@@ -596,10 +596,10 @@ export default function App() {
           </div>
         ) : (
           /* STANDARD DASHBOARD / SEARCHING GRID TABS LIST */
-          <div className="space-y-6 print:hidden">
+          <div className="space-y-6">
             
             {/* Tab Controls & Add Action button */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-800 pb-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-800 pb-2.5 print:hidden">
               
                {/* Visual Segment Tabs */}
               <div className="flex gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-2xl max-w-max">
@@ -651,20 +651,24 @@ export default function App() {
 
             {/* Render Tab Components */}
             {activeTab === 'dashboard' ? (
-              <Dashboard 
-                events={events} 
-                onSelectEvent={(ev) => setViewingEvent(ev)} 
-              />
+              <div className="print:hidden">
+                <Dashboard 
+                  events={events} 
+                  onSelectEvent={(ev) => setViewingEvent(ev)} 
+                />
+              </div>
             ) : activeTab === 'events' ? (
-              <EventList
-                events={events}
-                onSelectEvent={(ev) => setViewingEvent(ev)}
-                onEditEvent={(ev) => {
-                  setEditingEvent(ev);
-                  setIsFormOpen(true);
-                }}
-                onDeleteEvent={handleDeleteEvent}
-              />
+              <div className="print:hidden">
+                <EventList
+                  events={events}
+                  onSelectEvent={(ev) => setViewingEvent(ev)}
+                  onEditEvent={(ev) => {
+                    setEditingEvent(ev);
+                    setIsFormOpen(true);
+                  }}
+                  onDeleteEvent={handleDeleteEvent}
+                />
+              </div>
             ) : (
               <MonthlyCalculator
                 events={events}

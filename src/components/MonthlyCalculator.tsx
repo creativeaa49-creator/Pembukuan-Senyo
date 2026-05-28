@@ -5,6 +5,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { JobEvent } from '../types';
+import { pushToSheets } from '../lib/sheetsSync';
 import { 
   Printer, 
   Calendar, 
@@ -54,12 +55,13 @@ export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlCh
 
   // Google Sheets Sync States
   const [localSheetUrl, setLocalSheetUrl] = useState<string>(() => {
-    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycby92BSI8gE-56smG1fAk4lwvBIi7UJIhPD1xMZS3jIExLaMO3fNpPUaU2sEdg4yEvcW/exec';
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbw8nqWB1uYVyaa0rF9BFL3__c0yWgL2WEhDAIR0FVZPXC4hUb9cpkwV3k0XKqrcVwfv/exec';
     const stored = localStorage.getItem('senyo_google_sheet_url');
     const isOld = !stored || 
                   stored.includes('AKfycbzfX0pO') || 
                   stored.includes('AKfycbxVeO7jx') || 
-                  stored.includes('AKfycbw6GMLuYPJ5LIm33C');
+                  stored.includes('AKfycbw6GMLuYPJ5LIm33C') ||
+                  stored.includes('AKfycby92BSI8gE-56smG1fAk4lwvBIi7UJIhPD1xMZS3jIExLaMO3fNpPUaU2sEdg4yEvcW');
     if (isOld) {
       localStorage.setItem('senyo_google_sheet_url', DEFAULT_SHEET_URL);
       return DEFAULT_SHEET_URL;
@@ -134,26 +136,15 @@ export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlCh
     };
 
     try {
-      // Post via server-side API proxy to bypass browser security context and CORS constraints
-      const response = await fetch('/api/proxy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: sheetUrl,
-          body: payload
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Server returned status ${response.status}`);
+      const success = await pushToSheets(sheetUrl, payload);
+      if (success) {
+        setSyncStatus({ 
+          type: 'success', 
+          message: `Mataapp! ${completedMonthlyEvents.length} data gawean bulan ${ID_MONTHS[selectedMonth - 1]} dikirim ke Sheets!` 
+        });
+      } else {
+        throw new Error('Gagal mengirim data bray.');
       }
-
-      setSyncStatus({ 
-        type: 'success', 
-        message: `Mataapp! ${completedMonthlyEvents.length} data gawean bulan ${ID_MONTHS[selectedMonth - 1]} dikirim ke Sheets!` 
-      });
     } catch (err: any) {
       console.error(err);
       setSyncStatus({ 

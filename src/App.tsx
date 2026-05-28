@@ -35,6 +35,7 @@ import {
   resetToDefaults 
 } from './lib/db';
 import { exportToJSONFile } from './lib/utils';
+import { pullFromSheets, pushToSheets, testConnection as testSheetsConnection } from './lib/sheetsSync';
 
 import Dashboard from './components/Dashboard';
 import EventForm from './components/EventForm';
@@ -64,12 +65,13 @@ export default function App() {
   const [testStatus, setTestStatus] = useState<{ type: 'success' | 'error' | ''; message: string }>({ type: '', message: '' });
 
   const [sheetUrl, setSheetUrl] = useState<string>(() => {
-    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycby92BSI8gE-56smG1fAk4lwvBIi7UJIhPD1xMZS3jIExLaMO3fNpPUaU2sEdg4yEvcW/exec';
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbw8nqWB1uYVyaa0rF9BFL3__c0yWgL2WEhDAIR0FVZPXC4hUb9cpkwV3k0XKqrcVwfv/exec';
     const stored = localStorage.getItem('senyo_google_sheet_url');
     const isOld = !stored || 
                   stored.includes('AKfycbzfX0pO') || 
                   stored.includes('AKfycbxVeO7jx') || 
-                  stored.includes('AKfycbw6GMLuYPJ5LIm33C');
+                  stored.includes('AKfycbw6GMLuYPJ5LIm33C') ||
+                  stored.includes('AKfycby92BSI8gE-56smG1fAk4lwvBIi7UJIhPD1xMZS3jIExLaMO3fNpPUaU2sEdg4yEvcW');
     if (isOld) {
       localStorage.setItem('senyo_google_sheet_url', DEFAULT_SHEET_URL);
       return DEFAULT_SHEET_URL;
@@ -118,24 +120,8 @@ export default function App() {
     setIsTestingConnection(true);
     setTestStatus({ type: '', message: '' });
     try {
-      const queryUrl = `${sheetUrl}?t=${Date.now()}`;
-      const response = await fetch(`/api/proxy?url=${encodeURIComponent(queryUrl)}`);
-      if (!response.ok) {
-        try {
-          const errData = await response.json();
-          if (errData && errData.message) {
-            setTestStatus({ type: 'error', message: errData.message });
-            return;
-          }
-        } catch {}
-        throw new Error('Gagal menghubungi Web App Google Apps Script.');
-      }
-      const data = await response.json();
-      if (data && data.status === 'success') {
-        setTestStatus({ type: 'success', message: 'Koneksi Sukses! Web App Google Sheets terhubung dengan lancar jaya bray!' });
-      } else {
-        setTestStatus({ type: 'error', message: data.message || 'Menerima respons eror dari Apps Script.' });
-      }
+      const message = await testSheetsConnection(sheetUrl);
+      setTestStatus({ type: 'success', message });
     } catch (err: any) {
       console.error(err);
       setTestStatus({ type: 'error', message: err.message || 'Koneksi gagal bray. Periksa kembali URL dan pastikan Web App dideploy dengan akses "Siapa Saja (Anyone)".' });
@@ -148,48 +134,28 @@ export default function App() {
     if (!sheetUrl) return;
 
     if (!silent) setIsLoading(true);
-    let errorMessage = 'Gagal memuat data dari Sheets. Pastikan Web App dideploy dengan benar.';
-
     try {
-      // Route via server-side API proxy to bypass browser security context and CORS constraints
-      const queryUrl = `${sheetUrl}?t=${Date.now()}`;
-      const response = await fetch(`/api/proxy?url=${encodeURIComponent(queryUrl)}`);
+      const remoteEvents = await pullFromSheets(sheetUrl);
+      let importedCount = 0;
       
-      if (!response.ok) {
-        try {
-          const errData = await response.json();
-          if (errData && errData.message) {
-            errorMessage = errData.message;
-          }
-        } catch {}
-        throw new Error('Response non-ok');
+      for (const ev of remoteEvents) {
+        await saveEvent(ev);
+        importedCount++;
       }
       
-      const resData = await response.json();
-      if (resData && resData.status === 'success' && Array.isArray(resData.events)) {
-        let importedCount = 0;
-        
-        for (const ev of resData.events) {
-          await saveEvent(ev);
-          importedCount++;
-        }
-        
-        await loadAllData();
-        if (importedCount > 0 && !silent) {
-          showToast(`Sinkronisasi sukses! ${importedCount} data ditarik dari Google Sheets! 🚀`);
-          setTestStatus({ type: 'success', message: `Berhasil menarik ${importedCount} data gawean dari Sheets secara realtime!` });
-        } else if (!silent) {
-          showToast('Database Google Sheets sinkron dengan device ini!');
-          setTestStatus({ type: 'success', message: 'Device sudah sinkron dengan seluruh database di Google Sheets!' });
-        }
-      } else if (resData && resData.status === 'error') {
-        throw new Error(resData.message || 'Error dari Apps Script.');
+      await loadAllData();
+      if (importedCount > 0 && !silent) {
+        showToast(`Sinkronisasi sukses! ${importedCount} data ditarik dari Google Sheets! 🚀`);
+        setTestStatus({ type: 'success', message: `Berhasil menarik ${importedCount} data gawean dari Sheets secara realtime!` });
+      } else if (!silent) {
+        showToast('Database Google Sheets sinkron dengan device ini!');
+        setTestStatus({ type: 'success', message: 'Device sudah sinkron dengan seluruh database di Google Sheets!' });
       }
     } catch (err: any) {
       console.error('Failed to pull from Google Sheets:', err);
       if (!silent) {
-        showToast(errorMessage);
-        setTestStatus({ type: 'error', message: errorMessage });
+        showToast(err.message || 'Gagal memuat data dari Sheets. Pastikan Web App dideploy dengan benar.');
+        setTestStatus({ type: 'error', message: err.message || 'Gagal sinkron data.' });
       }
     } finally {
       if (!silent) setIsLoading(false);
@@ -223,29 +189,8 @@ export default function App() {
     };
 
     try {
-      const response = await fetch('/api/proxy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: sheetUrl,
-          body: payload
-        })
-      });
-
-      if (!response.ok) {
-        try {
-          const errJSON = await response.json();
-          if (errJSON && errJSON.message) {
-            throw new Error(errJSON.message);
-          }
-        } catch {}
-        throw new Error(`Server status non-ok: ${response.status}`);
-      }
-
-      const resData = await response.json();
-      if (resData && resData.status === 'success') {
+      const success = await pushToSheets(sheetUrl, payload);
+      if (success) {
         setTestStatus({ 
           type: 'success', 
           message: `Mantap bray! Seluruh basis data lokal (${events.length} Laporan Pekerjaan) sukses disetorkan ke Google Sheets Cloud!` 
@@ -253,7 +198,7 @@ export default function App() {
         showToast('Seluruh database berhasil tersimpan di Google Sheets!');
         return true;
       } else {
-        throw new Error(resData?.message || 'Gagal menyimpan database.');
+        throw new Error('Gagal menyimpan database.');
       }
     } catch (err: any) {
       console.error('Failed to push all events:', err);
@@ -292,17 +237,7 @@ export default function App() {
     };
 
     try {
-      const response = await fetch('/api/proxy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: sheetUrl,
-          body: payload
-        })
-      });
-      return response.ok;
+      return await pushToSheets(sheetUrl, payload);
     } catch (err) {
       console.error('Failed to auto-sync with Google Sheets:', err);
       return false;

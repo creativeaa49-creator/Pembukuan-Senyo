@@ -696,6 +696,11 @@ function doPost(e) {
 
       {/* EMBED PRINT SPECIFIC STYLES TO WEB SHELL HEAD DYNAMICALLY */}
       <style>{`
+        @page {
+          size: A4;
+          margin: 20mm 15mm 20mm 15mm;
+        }
+
         @media print {
           /* Hide non-print structures */
           header, 

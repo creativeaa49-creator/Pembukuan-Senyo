@@ -35,7 +35,7 @@ import {
   resetToDefaults 
 } from './lib/db';
 import { exportToJSONFile } from './lib/utils';
-import { pullFromSheets, pushToSheets, testConnection as testSheetsConnection } from './lib/sheetsSync';
+import { pullFromSheets, pushToSheets, testConnection as testSheetsConnection, parseEventDate } from './lib/sheetsSync';
 
 import Dashboard from './components/Dashboard';
 import EventForm from './components/EventForm';
@@ -139,6 +139,14 @@ export default function App() {
       let importedCount = 0;
       
       for (const ev of remoteEvents) {
+        // Enforce perfect date normalization so day, month, and year synchronize correctly
+        if (ev && ev.date) {
+          const parsed = parseEventDate(ev.date);
+          ev.date = parsed.date;
+          ev.day = parsed.day;
+          ev.month = parsed.month;
+          ev.year = parsed.year;
+        }
         await saveEvent(ev);
         importedCount++;
       }

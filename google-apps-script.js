@@ -32,22 +32,53 @@ function doGet(e) {
         var row = values[i];
         if (!row[0]) continue; // Lewati jika ID Kerja kosong
         
-        // Parsing Tanggal Main (misalnya format Date objek ke format string "YYYY-MM-DD")
+        // Parsing Tanggal Main dengan sangat kokoh bray! (Mendukung Date object maupun String beraneka format)
         var dateVal = row[1];
+        var finalDateStr = "";
+        var year = new Date().getFullYear();
+        var month = new Date().getMonth() + 1;
+        var day = new Date().getDate();
+
         if (dateVal instanceof Date) {
-          var yearStr = dateVal.getFullYear();
-          var monthStr = ("0" + (dateVal.getMonth() + 1)).slice(-2);
-          var dayStr = ("0" + dateVal.getDate()).slice(-2);
-          dateVal = yearStr + "-" + monthStr + "-" + dayStr;
+          year = dateVal.getFullYear();
+          month = dateVal.getMonth() + 1;
+          day = dateVal.getDate();
+          finalDateStr = year + "-" + ("0" + month).slice(-2) + "-" + ("0" + day).slice(-2);
         } else {
-          dateVal = String(dateVal);
+          var dateString = String(dateVal || "").trim();
+          dateString = dateString.replace(/\//g, "-");
+          var parts = dateString.split("-");
+          
+          if (parts.length === 3) {
+            if (parts[0].length === 4) {
+              // Format YYYY-MM-DD
+              year = parseInt(parts[0]) || year;
+              month = parseInt(parts[1]) || month;
+              day = parseInt(parts[2]) || day;
+            } else if (parts[2].length === 4) {
+              // Format DD-MM-YYYY
+              day = parseInt(parts[0]) || day;
+              month = parseInt(parts[1]) || month;
+              year = parseInt(parts[2]) || year;
+            } else {
+              // Percobaan parsing tanggal standar
+              var dObj = new Date(dateString);
+              if (dObj && !isNaN(dObj.getTime())) {
+                year = dObj.getFullYear();
+                month = dObj.getMonth() + 1;
+                day = dObj.getDate();
+              }
+            }
+          } else {
+            var dObj = new Date(dateString);
+            if (dObj && !isNaN(dObj.getTime())) {
+              year = dObj.getFullYear();
+              month = dObj.getMonth() + 1;
+              day = dObj.getDate();
+            }
+          }
+          finalDateStr = year + "-" + ("0" + month).slice(-2) + "-" + ("0" + day).slice(-2);
         }
-        
-        // Memisahkan hari, bulan, dan tahun dari string YYYY-MM-DD
-        var parts = dateVal.split("-");
-        var year = parseInt(parts[0]) || new Date().getFullYear();
-        var month = parseInt(parts[1]) || (new Date().getMonth() + 1);
-        var day = parseInt(parts[2]) || new Date().getDate();
         
         // Parsing data Team/Kru dari kolom ke-6
         var teamStr = String(row[5] || "");
@@ -58,7 +89,7 @@ function doGet(e) {
         
         events.push({
           id: String(row[0] || ""),
-          date: dateVal,
+          date: finalDateStr,
           day: day,
           month: month,
           year: year,

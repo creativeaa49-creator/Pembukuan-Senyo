@@ -12,6 +12,105 @@ interface SyncPayload {
 }
 
 /**
+ * Robust date parser helper to synchronize date, day, month, and year exactly as in the previous data.
+ * Handles formats: YYYY-MM-DD, DD-MM-YYYY, YYYY/MM/DD, DD/MM/YYYY, MM/DD/YYYY, or Date strings.
+ */
+export function parseEventDate(rawDateStr: string): { date: string; day: number; month: number; year: number } {
+  const fallbackDate = new Date();
+  if (!rawDateStr) {
+    return {
+      date: fallbackDate.toISOString().split('T')[0],
+      day: fallbackDate.getDate(),
+      month: fallbackDate.getMonth() + 1,
+      year: fallbackDate.getFullYear(),
+    };
+  }
+
+  const rawTrimmed = rawDateStr.trim();
+
+  // Try standard parsing if it looks like an ISO Timestamp
+  if (rawTrimmed.includes('T')) {
+    const dObj = new Date(rawTrimmed);
+    if (!isNaN(dObj.getTime())) {
+      const y = dObj.getFullYear();
+      const m = dObj.getMonth() + 1;
+      const d = dObj.getDate();
+      return {
+        date: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+        day: d,
+        month: m,
+        year: y
+      };
+    }
+  }
+
+  // Normalize delimiters to dash
+  const normalized = rawTrimmed.replace(/\//g, '-');
+  const parts = normalized.split('-');
+
+  if (parts.length === 3) {
+    // Scenario 1: YYYY-MM-DD or YYYY-M-D
+    if (parts[0].length === 4) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const d = parseInt(parts[2], 10);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+        return {
+          date: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+          day: d,
+          month: m,
+          year: y
+        };
+      }
+    }
+    // Scenario 2: DD-MM-YYYY or D-M-YYYY
+    if (parts[2].length === 4) {
+      const d = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const y = parseInt(parts[2], 10);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+        // Double check month boundary if m might be date or date/month are inverted
+        let finalM = m;
+        let finalD = d;
+        if (m > 12 && d <= 12) {
+          // If month is > 12, it's likely MM-DD-YYYY
+          finalM = d;
+          finalD = m;
+        }
+        return {
+          date: `${y}-${String(finalM).padStart(2, '0')}-${String(finalD).padStart(2, '0')}`,
+          day: finalD,
+          month: finalM,
+          year: y
+        };
+      }
+    }
+  }
+
+  // Fallback to JS standard Date parsing
+  const dObj = new Date(normalized);
+  if (!isNaN(dObj.getTime())) {
+    const y = dObj.getFullYear();
+    const m = dObj.getMonth() + 1;
+    const d = dObj.getDate();
+    return {
+      date: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+      day: d,
+      month: m,
+      year: y
+    };
+  }
+
+  // Final fallback
+  return {
+    date: fallbackDate.toISOString().split('T')[0],
+    day: fallbackDate.getDate(),
+    month: fallbackDate.getMonth() + 1,
+    year: fallbackDate.getFullYear(),
+  };
+}
+
+/**
  * Checks if a string is a valid JSON.
  */
 function attemptParseJSON(text: string): { status: 'success' | 'error'; data?: any; message?: string } {

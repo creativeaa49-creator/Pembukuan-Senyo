@@ -86,6 +86,40 @@ export default function App() {
   };
 
   // Event handlers
+  const autoSyncToGoogleSheets = async (event: JobEvent): Promise<boolean> => {
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxVeO7jxIDa5fwJT9x17vjEnRL2KXj_7kDB36EVjdq7G4CtAfPpl4NwnNrki3jp3KTakQ/exec';
+    const storedUrl = localStorage.getItem('senyo_google_sheet_url') || DEFAULT_SHEET_URL;
+    if (!storedUrl) return false;
+
+    const payload = {
+      events: [{
+        id: event.id,
+        date: event.date,
+        month: event.month,
+        year: event.year,
+        eventName: event.eventName,
+        location: event.location || 'Pekerjaan Pribadi',
+        team: event.team || [],
+        notes: event.notes || ''
+      }]
+    };
+
+    try {
+      await fetch(storedUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'text/plain',
+        },
+        body: JSON.stringify(payload)
+      });
+      return true;
+    } catch (err) {
+      console.error('Failed to auto-sync with Google Sheets:', err);
+      return false;
+    }
+  };
+
   const handleSaveEvent = async (event: JobEvent) => {
     setIsLoading(true);
     try {
@@ -99,7 +133,13 @@ export default function App() {
         setViewingEvent(event);
       }
       
-      showToast('Data pekerjaan berhasil disimpan secara aman di database lokal!');
+      // Auto sync with Google Sheets
+      const syncSuccess = await autoSyncToGoogleSheets(event);
+      if (syncSuccess) {
+        showToast('Data berhasil di-input & otomatis disetorkan ke Google Sheets! 🚀');
+      } else {
+        showToast('Data berhasil disimpan secara lokal! (Gagal kirim ke Google Sheets)');
+      }
     } catch (err) {
       console.error(err);
       showToast('Gagal menyimpan pekerjaan.');

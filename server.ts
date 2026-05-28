@@ -22,7 +22,18 @@ async function startServer() {
         const data = JSON.parse(text);
         return res.json(data);
       } catch {
-        return res.send(text);
+        const trimmed = text.trim();
+        if (trimmed.startsWith('<') || text.toLowerCase().includes('doctype html') || text.toLowerCase().includes('google-signin')) {
+          return res.status(502).json({
+            status: 'error',
+            message: 'Google Apps Script mengembalikan halaman HTML (Akses Terbatas/Login Google). Silakan deploy ulang Web App Anda di Google Sheets, lalu pilih "Who has access (Yang memiliki akses)" -> "Anyone (Siapa saja)" agar database dapat terhubung secara lancar bray!'
+          });
+        }
+        return res.status(502).json({
+          status: 'error',
+          message: 'Respons dari Google Apps Script bukan format JSON yang valid.',
+          details: text.slice(0, 300)
+        });
       }
     } catch (err: any) {
       console.error('Proxy GET Error:', err);
@@ -48,7 +59,18 @@ async function startServer() {
         const data = JSON.parse(text);
         return res.json(data);
       } catch {
-        return res.send(text);
+        const trimmed = text.trim();
+        if (trimmed.startsWith('<') || text.toLowerCase().includes('doctype html') || text.toLowerCase().includes('google-signin')) {
+          return res.status(502).json({
+            status: 'error',
+            message: 'Google Apps Script mengembalikan halaman HTML (Akses Terbatas/Login Google). Silakan deploy ulang Web App Anda di Google Sheets, pilih "Who has access (Yang memiliki akses)" -> "Anyone (Siapa saja)".'
+          });
+        }
+        return res.status(502).json({
+          status: 'error',
+          message: 'Respons dari Google Apps Script bukan format JSON yang valid.',
+          details: text.slice(0, 300)
+        });
       }
     } catch (err: any) {
       console.error('Proxy POST Error:', err);

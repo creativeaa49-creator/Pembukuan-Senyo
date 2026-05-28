@@ -52,7 +52,17 @@ export function MonthlyCalculator({ events }: MonthlyCalculatorProps) {
 
   // Google Sheets Sync States
   const [sheetUrl, setSheetUrl] = useState<string>(() => {
-    return localStorage.getItem('senyo_google_sheet_url') || 'https://script.google.com/macros/s/AKfycbzfX0pOdfCUjCvgN6Z7rbQCpL0_tUb7vNxUihAoYFDj5yKnfHjrgeZcC01B8nHJ_1JlNg/exec';
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycby92BSI8gE-56smG1fAk4lwvBIi7UJIhPD1xMZS3jIExLaMO3fNpPUaU2sEdg4yEvcW/exec';
+    const stored = localStorage.getItem('senyo_google_sheet_url');
+    const isOld = !stored || 
+                  stored.includes('AKfycbzfX0pO') || 
+                  stored.includes('AKfycbxVeO7jx') || 
+                  stored.includes('AKfycbw6GMLuYPJ5LIm33C');
+    if (isOld) {
+      localStorage.setItem('senyo_google_sheet_url', DEFAULT_SHEET_URL);
+      return DEFAULT_SHEET_URL;
+    }
+    return stored || DEFAULT_SHEET_URL;
   });
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error' | ''; message: string }>({ type: '', message: '' });

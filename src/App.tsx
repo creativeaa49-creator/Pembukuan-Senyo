@@ -83,16 +83,39 @@ export default function App() {
   };
 
   const syncPullFromGoogleSheets = async (silent = true): Promise<void> => {
-    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzfX0pOdfCUjCvgN6Z7rbQCpL0_tUb7vNxUihAoYFDj5yKnfHjrgeZcC01B8nHJ_1JlNg/exec';
-    const storedUrl = localStorage.getItem('senyo_google_sheet_url') || DEFAULT_SHEET_URL;
-    if (!storedUrl) return;
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycby92BSI8gE-56smG1fAk4lwvBIi7UJIhPD1xMZS3jIExLaMO3fNpPUaU2sEdg4yEvcW/exec';
+    
+    // Auto migration of deprecated URLs to the new sheet URL dynamically
+    const storedUrl = localStorage.getItem('senyo_google_sheet_url');
+    const isOldUrl = !storedUrl || 
+                     storedUrl.includes('AKfycbzfX0pO') || 
+                     storedUrl.includes('AKfycbxVeO7jx') || 
+                     storedUrl.includes('AKfycbw6GMLuYPJ5LIm33C');
+    const activeUrl = isOldUrl ? DEFAULT_SHEET_URL : storedUrl;
+    
+    if (isOldUrl) {
+      localStorage.setItem('senyo_google_sheet_url', DEFAULT_SHEET_URL);
+    }
+    
+    if (!activeUrl) return;
 
     if (!silent) setIsLoading(true);
+    let errorMessage = 'Gagal memuat data dari Sheets. Pastikan Web App dideploy dengan benar.';
+
     try {
       // Route via server-side API proxy to bypass browser security context and CORS constraints
-      const queryUrl = `${storedUrl}?t=${Date.now()}`;
+      const queryUrl = `${activeUrl}?t=${Date.now()}`;
       const response = await fetch(`/api/proxy?url=${encodeURIComponent(queryUrl)}`);
-      if (!response.ok) throw new Error('Response non-ok');
+      
+      if (!response.ok) {
+        try {
+          const errData = await response.json();
+          if (errData && errData.message) {
+            errorMessage = errData.message;
+          }
+        } catch {}
+        throw new Error('Response non-ok');
+      }
       
       const resData = await response.json();
       if (resData && resData.status === 'success' && Array.isArray(resData.events)) {
@@ -109,11 +132,13 @@ export default function App() {
         } else if (!silent) {
           showToast('Database Google Sheets sinkron dengan device ini!');
         }
+      } else if (resData && resData.status === 'error') {
+        throw new Error(resData.message || 'Error dari Apps Script.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to pull from Google Sheets:', err);
       if (!silent) {
-        showToast('Gagal memuat data dari Sheets. Pastikan Web App dideploy dengan benar.');
+        showToast(errorMessage);
       }
     } finally {
       if (!silent) setIsLoading(false);
@@ -129,9 +154,20 @@ export default function App() {
 
   // Event handlers
   const autoSyncToGoogleSheets = async (event: JobEvent): Promise<boolean> => {
-    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzfX0pOdfCUjCvgN6Z7rbQCpL0_tUb7vNxUihAoYFDj5yKnfHjrgeZcC01B8nHJ_1JlNg/exec';
-    const storedUrl = localStorage.getItem('senyo_google_sheet_url') || DEFAULT_SHEET_URL;
-    if (!storedUrl) return false;
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycby92BSI8gE-56smG1fAk4lwvBIi7UJIhPD1xMZS3jIExLaMO3fNpPUaU2sEdg4yEvcW/exec';
+    
+    const storedUrl = localStorage.getItem('senyo_google_sheet_url');
+    const isOldUrl = !storedUrl || 
+                     storedUrl.includes('AKfycbzfX0pO') || 
+                     storedUrl.includes('AKfycbxVeO7jx') || 
+                     storedUrl.includes('AKfycbw6GMLuYPJ5LIm33C');
+    const activeUrl = isOldUrl ? DEFAULT_SHEET_URL : storedUrl;
+    
+    if (isOldUrl) {
+      localStorage.setItem('senyo_google_sheet_url', DEFAULT_SHEET_URL);
+    }
+
+    if (!activeUrl) return false;
 
     const payload = {
       events: [{
@@ -153,7 +189,7 @@ export default function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          url: storedUrl,
+          url: activeUrl,
           body: payload
         })
       });

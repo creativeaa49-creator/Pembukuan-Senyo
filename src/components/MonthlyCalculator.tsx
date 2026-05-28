@@ -21,6 +21,8 @@ import {
 
 interface MonthlyCalculatorProps {
   events: JobEvent[];
+  sheetUrl?: string;
+  onSheetUrlChange?: (url: string) => void;
 }
 
 const ID_MONTHS = [
@@ -28,7 +30,7 @@ const ID_MONTHS = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-export function MonthlyCalculator({ events }: MonthlyCalculatorProps) {
+export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlChange }: MonthlyCalculatorProps) {
   // Get all unique years and months from events for selectors
   const years = useMemo(() => {
     const list = events.map(e => e.year);
@@ -51,7 +53,7 @@ export function MonthlyCalculator({ events }: MonthlyCalculatorProps) {
   const [signerRole, setSignerRole] = useState<string>('Kreator Utama / Partner Lapangan');
 
   // Google Sheets Sync States
-  const [sheetUrl, setSheetUrl] = useState<string>(() => {
+  const [localSheetUrl, setLocalSheetUrl] = useState<string>(() => {
     const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycby92BSI8gE-56smG1fAk4lwvBIi7UJIhPD1xMZS3jIExLaMO3fNpPUaU2sEdg4yEvcW/exec';
     const stored = localStorage.getItem('senyo_google_sheet_url');
     const isOld = !stored || 
@@ -64,14 +66,21 @@ export function MonthlyCalculator({ events }: MonthlyCalculatorProps) {
     }
     return stored || DEFAULT_SHEET_URL;
   });
+
+  const sheetUrl = propSheetUrl !== undefined ? propSheetUrl : localSheetUrl;
+
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error' | ''; message: string }>({ type: '', message: '' });
   const [copiedScript, setCopiedScript] = useState<boolean>(false);
   const [showSheetInstructions, setShowSheetInstructions] = useState<boolean>(false);
 
   const handleSaveSheetUrl = (url: string) => {
-    setSheetUrl(url);
-    localStorage.setItem('senyo_google_sheet_url', url);
+    if (onSheetUrlChange) {
+      onSheetUrlChange(url);
+    } else {
+      setLocalSheetUrl(url);
+      localStorage.setItem('senyo_google_sheet_url', url);
+    }
   };
 
   // Filter events of selected month/year that are completed ('Selesai')

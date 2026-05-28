@@ -20,7 +20,8 @@ import {
   AlertTriangle,
   FileText,
   RefreshCw,
-  Cloud
+  Cloud,
+  X
 } from 'lucide-react';
 import { JobEvent, Teammate } from './types';
 import { 
@@ -55,6 +56,33 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Centralized Sheets Sync states
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
+  const [showSheetInstructions, setShowSheetInstructions] = useState<boolean>(false);
+  const [isTestingConnection, setIsTestingConnection] = useState<boolean>(false);
+  const [isPushingAll, setIsPushingAll] = useState<boolean>(false);
+  const [testStatus, setTestStatus] = useState<{ type: 'success' | 'error' | ''; message: string }>({ type: '', message: '' });
+
+  const [sheetUrl, setSheetUrl] = useState<string>(() => {
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycby92BSI8gE-56smG1fAk4lwvBIi7UJIhPD1xMZS3jIExLaMO3fNpPUaU2sEdg4yEvcW/exec';
+    const stored = localStorage.getItem('senyo_google_sheet_url');
+    const isOld = !stored || 
+                  stored.includes('AKfycbzfX0pO') || 
+                  stored.includes('AKfycbxVeO7jx') || 
+                  stored.includes('AKfycbw6GMLuYPJ5LIm33C');
+    if (isOld) {
+      localStorage.setItem('senyo_google_sheet_url', DEFAULT_SHEET_URL);
+      return DEFAULT_SHEET_URL;
+    }
+    return stored || DEFAULT_SHEET_URL;
+  });
+
+  const handleSaveSheetUrl = (url: string) => {
+    const trimmed = url.trim();
+    setSheetUrl(trimmed);
+    localStorage.setItem('senyo_google_sheet_url', trimmed);
+  };
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load database on mount
@@ -73,7 +101,7 @@ export default function App() {
       }
     }
     initDB();
-  }, []);
+  }, [sheetUrl]);
 
   const loadAllData = async () => {
     const evs = await getAllEvents();
@@ -82,29 +110,49 @@ export default function App() {
     setTeammates(tms);
   };
 
-  const syncPullFromGoogleSheets = async (silent = true): Promise<void> => {
-    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycby92BSI8gE-56smG1fAk4lwvBIi7UJIhPD1xMZS3jIExLaMO3fNpPUaU2sEdg4yEvcW/exec';
-    
-    // Auto migration of deprecated URLs to the new sheet URL dynamically
-    const storedUrl = localStorage.getItem('senyo_google_sheet_url');
-    const isOldUrl = !storedUrl || 
-                     storedUrl.includes('AKfycbzfX0pO') || 
-                     storedUrl.includes('AKfycbxVeO7jx') || 
-                     storedUrl.includes('AKfycbw6GMLuYPJ5LIm33C');
-    const activeUrl = isOldUrl ? DEFAULT_SHEET_URL : storedUrl;
-    
-    if (isOldUrl) {
-      localStorage.setItem('senyo_google_sheet_url', DEFAULT_SHEET_URL);
+  const testConnection = async () => {
+    if (!sheetUrl) {
+      setTestStatus({ type: 'error', message: 'Tolong masukkan URL Web App Apps Script bray!' });
+      return;
     }
-    
-    if (!activeUrl) return;
+    setIsTestingConnection(true);
+    setTestStatus({ type: '', message: '' });
+    try {
+      const queryUrl = `${sheetUrl}?t=${Date.now()}`;
+      const response = await fetch(`/api/proxy?url=${encodeURIComponent(queryUrl)}`);
+      if (!response.ok) {
+        try {
+          const errData = await response.json();
+          if (errData && errData.message) {
+            setTestStatus({ type: 'error', message: errData.message });
+            return;
+          }
+        } catch {}
+        throw new Error('Gagal menghubungi Web App Google Apps Script.');
+      }
+      const data = await response.json();
+      if (data && data.status === 'success') {
+        setTestStatus({ type: 'success', message: 'Koneksi Sukses! Web App Google Sheets terhubung dengan lancar jaya bray!' });
+      } else {
+        setTestStatus({ type: 'error', message: data.message || 'Menerima respons eror dari Apps Script.' });
+      }
+    } catch (err: any) {
+      console.error(err);
+      setTestStatus({ type: 'error', message: err.message || 'Koneksi gagal bray. Periksa kembali URL dan pastikan Web App dideploy dengan akses "Siapa Saja (Anyone)".' });
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
+
+  const syncPullFromGoogleSheets = async (silent = true): Promise<void> => {
+    if (!sheetUrl) return;
 
     if (!silent) setIsLoading(true);
     let errorMessage = 'Gagal memuat data dari Sheets. Pastikan Web App dideploy dengan benar.';
 
     try {
       // Route via server-side API proxy to bypass browser security context and CORS constraints
-      const queryUrl = `${activeUrl}?t=${Date.now()}`;
+      const queryUrl = `${sheetUrl}?t=${Date.now()}`;
       const response = await fetch(`/api/proxy?url=${encodeURIComponent(queryUrl)}`);
       
       if (!response.ok) {
@@ -129,8 +177,10 @@ export default function App() {
         await loadAllData();
         if (importedCount > 0 && !silent) {
           showToast(`Sinkronisasi sukses! ${importedCount} data ditarik dari Google Sheets! 🚀`);
+          setTestStatus({ type: 'success', message: `Berhasil menarik ${importedCount} data gawean dari Sheets secara realtime!` });
         } else if (!silent) {
           showToast('Database Google Sheets sinkron dengan device ini!');
+          setTestStatus({ type: 'success', message: 'Device sudah sinkron dengan seluruh database di Google Sheets!' });
         }
       } else if (resData && resData.status === 'error') {
         throw new Error(resData.message || 'Error dari Apps Script.');
@@ -139,9 +189,81 @@ export default function App() {
       console.error('Failed to pull from Google Sheets:', err);
       if (!silent) {
         showToast(errorMessage);
+        setTestStatus({ type: 'error', message: errorMessage });
       }
     } finally {
       if (!silent) setIsLoading(false);
+    }
+  };
+
+  const syncPushAllToGoogleSheets = async (): Promise<boolean> => {
+    if (!sheetUrl) {
+      setTestStatus({ type: 'error', message: 'Tolong masukkan URL Web App Apps Script bray!' });
+      return false;
+    }
+    if (events.length === 0) {
+      setTestStatus({ type: 'error', message: 'Tidak ada data pekerjaan lokal untuk disetorkan bray.' });
+      return false;
+    }
+    setIsPushingAll(true);
+    setTestStatus({ type: '', message: '' });
+    
+    // Group all local events to send in one payload
+    const payload = {
+      events: events.map(e => ({
+        id: e.id,
+        date: e.date,
+        month: e.month,
+        year: e.year,
+        eventName: e.eventName,
+        location: e.location || 'Pekerjaan Pribadi',
+        team: e.team || [],
+        notes: e.notes || ''
+      }))
+    };
+
+    try {
+      const response = await fetch('/api/proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: sheetUrl,
+          body: payload
+        })
+      });
+
+      if (!response.ok) {
+        try {
+          const errJSON = await response.json();
+          if (errJSON && errJSON.message) {
+            throw new Error(errJSON.message);
+          }
+        } catch {}
+        throw new Error(`Server status non-ok: ${response.status}`);
+      }
+
+      const resData = await response.json();
+      if (resData && resData.status === 'success') {
+        setTestStatus({ 
+          type: 'success', 
+          message: `Mantap bray! Seluruh basis data lokal (${events.length} Laporan Pekerjaan) sukses disetorkan ke Google Sheets Cloud!` 
+        });
+        showToast('Seluruh database berhasil tersimpan di Google Sheets!');
+        return true;
+      } else {
+        throw new Error(resData?.message || 'Gagal menyimpan database.');
+      }
+    } catch (err: any) {
+      console.error('Failed to push all events:', err);
+      setTestStatus({ 
+        type: 'error', 
+        message: `Gagal mengirim basis data bray: ${err.message || 'Koneksi error.'}` 
+      });
+      return false;
+    } finally {
+      setIsPushingAll(false);
     }
   };
 
@@ -154,20 +276,7 @@ export default function App() {
 
   // Event handlers
   const autoSyncToGoogleSheets = async (event: JobEvent): Promise<boolean> => {
-    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycby92BSI8gE-56smG1fAk4lwvBIi7UJIhPD1xMZS3jIExLaMO3fNpPUaU2sEdg4yEvcW/exec';
-    
-    const storedUrl = localStorage.getItem('senyo_google_sheet_url');
-    const isOldUrl = !storedUrl || 
-                     storedUrl.includes('AKfycbzfX0pO') || 
-                     storedUrl.includes('AKfycbxVeO7jx') || 
-                     storedUrl.includes('AKfycbw6GMLuYPJ5LIm33C');
-    const activeUrl = isOldUrl ? DEFAULT_SHEET_URL : storedUrl;
-    
-    if (isOldUrl) {
-      localStorage.setItem('senyo_google_sheet_url', DEFAULT_SHEET_URL);
-    }
-
-    if (!activeUrl) return false;
+    if (!sheetUrl) return false;
 
     const payload = {
       events: [{
@@ -189,7 +298,7 @@ export default function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          url: activeUrl,
+          url: sheetUrl,
           body: payload
         })
       });
@@ -383,14 +492,17 @@ export default function App() {
               {new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
             </div>
 
-            {/* Sync Cloud Download Button */}
+            {/* Sync Cloud Setup & Operations Button */}
             <button
-              onClick={() => syncPullFromGoogleSheets(false)}
+              onClick={() => {
+                setIsSyncModalOpen(true);
+                setTestStatus({ type: '', message: '' });
+              }}
               className="h-10 px-3.5 bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-800/60 rounded-xl text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5 transition-all cursor-pointer animate-pulse hover:animate-none"
-              title="Ambil dan sinkronkan data terbaru dari Google Sheets"
+              title="Pusat Sinkronisasi Google Sheets"
             >
-              <RefreshCw className="w-4 h-4 text-emerald-400" />
-              <span>Sinkronkan</span>
+              <Cloud className="w-4 h-4 text-emerald-400" />
+              <span>Sinkronisasi Cloud</span>
             </button>
 
             {/* Roster management button */}
@@ -613,6 +725,8 @@ export default function App() {
             ) : (
               <MonthlyCalculator
                 events={events}
+                sheetUrl={sheetUrl}
+                onSheetUrlChange={handleSaveSheetUrl}
               />
             )}
 
@@ -636,6 +750,154 @@ export default function App() {
 
       {/* Bottom Bar Decoration */}
       <div className="h-4 w-full bg-gradient-to-r from-indigo-500 via-pink-500 to-orange-500 print:hidden shrink-0"></div>
+
+      {/* CLOUD SYNC HUB MODAL */}
+      {isSyncModalOpen && (
+        <div id="sync-hub-modal" className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto animate-fade-in print:hidden">
+          <div className="bg-slate-900 border-2 border-slate-800 rounded-3xl max-w-2xl w-full p-6 md:p-8 space-y-6 shadow-2xl relative select-text">
+            
+            {/* Close Button */}
+            <button 
+              onClick={() => {
+                setIsSyncModalOpen(false);
+                setTestStatus({ type: '', message: '' });
+              }}
+              className="absolute top-4 right-4 text-slate-450 hover:text-slate-100 p-2 cursor-pointer hover:bg-slate-800 rounded-xl transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Title */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-950/60 border border-emerald-800/80 flex items-center justify-center">
+                <Cloud className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div className="text-left">
+                <h3 className="text-sm sm:text-lg font-black uppercase tracking-tight text-slate-100 flex items-center gap-1.5">
+                  Pusat Sinkronisasi Cloud
+                </h3>
+                <p className="text-[10px] sm:text-xs text-slate-400 font-extrabold">Backup &amp; sinkronkan basis data dengan Google Sheets secara realtime bray!</p>
+              </div>
+            </div>
+
+            {/* URL Form Section */}
+            <div className="bg-slate-950/40 p-4 border border-slate-800/80 rounded-2xl space-y-3">
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-450 leading-none text-left">
+                URL Google Apps Script Web App (Webhook)
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={sheetUrl}
+                  onChange={(e) => handleSaveSheetUrl(e.target.value)}
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  className="flex-1 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs font-mono text-slate-200 placeholder:text-slate-755 placeholder:font-sans focus:outline-none transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={testConnection}
+                  disabled={isTestingConnection}
+                  className="bg-slate-800 hover:bg-slate-750 text-slate-250 border border-slate-705 px-4 h-10 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isTestingConnection ? 'animate-spin' : ''}`} />
+                  <span>Cek Koneksi</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Operational Sync Buttons */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              {/* Box Pull */}
+              <div className="bg-slate-950/20 border border-slate-800 p-4 rounded-2xl flex flex-col justify-between text-left">
+                <div>
+                  <h4 className="text-xs font-black text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                    📥 Ambil Dari Cloud (Pull)
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                    Menarik seluruh data pekerjaan dari Google Sheets dan memasukkannya ke penyimpanan lokal device ini bray.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await syncPullFromGoogleSheets(false);
+                  }}
+                  disabled={isLoading}
+                  className="mt-4 w-full h-10 bg-indigo-950/40 hover:bg-indigo-900/60 border border-indigo-850 rounded-xl text-xs font-black uppercase tracking-wider text-indigo-400 flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <Download className="w-4 h-4" /> Tarik Semua Data
+                </button>
+              </div>
+
+              {/* Box Push */}
+              <div className="bg-slate-950/20 border border-slate-800 p-4 rounded-2xl flex flex-col justify-between text-left">
+                <div>
+                  <h4 className="text-xs font-black text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                    📤 Setor ke Cloud (Push ALL)
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                    Kirim basis data lokal ({events.length} Laporan Pekerjaan) di device ini ke Google Sheets saat ini juga bray.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={syncPushAllToGoogleSheets}
+                  disabled={isPushingAll || events.length === 0}
+                  className="mt-4 w-full h-10 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-800/80 rounded-xl text-xs font-black uppercase tracking-wider text-emerald-450 flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <Upload className={`w-4 h-4 ${isPushingAll ? 'animate-spin' : ''}`} /> Setor Semua Data
+                </button>
+              </div>
+
+            </div>
+
+            {/* Test connection results banner */}
+            {testStatus.message && (
+              <div className={`p-3.5 rounded-2xl border flex items-start gap-2.5 text-xs font-extrabold leading-relaxed text-left ${
+                testStatus.type === 'success' 
+                  ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-455' 
+                  : 'bg-red-955/20 border-red-800/60 text-red-400'
+              }`}>
+                {testStatus.type === 'success' ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5 animate-bounce" />
+                )}
+                <span>{testStatus.message}</span>
+              </div>
+            )}
+
+            {/* Instruction Toggle */}
+            <div className="pt-2 border-t border-slate-800 text-left">
+              <button
+                type="button"
+                className="w-full text-left text-xs text-pink-400 hover:text-pink-300 font-extrabold cursor-pointer uppercase tracking-wider flex items-center justify-between"
+                onClick={() => setShowSheetInstructions(!showSheetInstructions)}
+              >
+                <span>{showSheetInstructions ? '✖ Sembunyikan Panduan Deploy' : '⚙ Panduan Cara Atur Google Sheets'}</span>
+              </button>
+              
+              {showSheetInstructions && (
+                <div className="mt-3.5 text-xs text-slate-400 space-y-4 max-h-48 overflow-y-auto thin-scrollbar p-3 bg-slate-950/60 border border-slate-800/80 rounded-2xl leading-relaxed">
+                  <ol className="list-decimal pl-4.5 space-y-2.5 font-bold">
+                    <li>Buka Google Sheets Anda atau buat Sheet baru.</li>
+                    <li>Sediakan sheet pertama di dokumen itu.</li>
+                    <li>Klik menu <strong className="text-slate-100">Ekstensi &gt; Apps Script</strong>.</li>
+                    <li>Hapus seluruh isi script bawaan, lalu paste kode Apps Script luar biasa (bisa disalin di tab Laporan Bulanan bray).</li>
+                    <li>Klik <strong className="text-slate-100">Terapkan &gt; Penerapan Baru (Deploy &gt; New Deployment)</strong>.</li>
+                    <li>Atur jenis penerapan ke <strong className="text-slate-100">Aplikasi Web (Web App)</strong>.</li>
+                    <li>Atur <strong className="text-slate-100">Yang memiliki akses (Who has access)</strong> menjadi <strong className="text-pink-400">Siapa Saja (Anyone)</strong>. Hal ini penting agar aplikasi web ini bisa menyimpan data ke sheets tanpa harus login akun google lagi bray!</li>
+                    <li>Klik Terapkan (Deploy), berikan izin akses google account anda.</li>
+                    <li>Salin URL Aplikasi Web yang dihasilkan kemudian masukkan di kolom input atas bray!</li>
+                  </ol>
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

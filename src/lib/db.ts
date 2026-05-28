@@ -144,55 +144,16 @@ export async function deleteTeammate(id: string): Promise<void> {
   });
 }
 
-// Initial seeding of teammates and events if empty
+// Initial seeding of teammates and events if empty (now modified to keep the database totally clean/blank)
 export async function seedInitialDataIfNeeded(): Promise<void> {
   const teammates = await getAllTeammates();
-  if (teammates.length === 0) {
-    const defaults: Teammate[] = [
-      { id: '1', name: 'Senyo (Mandiri)', role: 'Kreator Utama', isActive: true },
-      { id: '2', name: 'Andi Pratama', role: 'Dokumentasi', isActive: true },
-      { id: '3', name: 'Budi Santoso', role: 'Teknisi Lapangan', isActive: true },
-    ];
-    for (const d of defaults) {
-      await saveTeammate(d);
-    }
-  }
-
+  // If there are legacy default seed teammates, we can clear them or let user keep their added teammates.
+  // We keep user-made teammates but remove default seeds if desired.
+  // Let's delete default seed events specifically to ensure a beautifully empty board on initial state.
   const events = await getAllEvents();
-  if (events.length === 0) {
-    const defaultEvents: JobEvent[] = [
-      {
-        id: 'ev-seed-1',
-        date: '2026-05-20',
-        day: 20,
-        month: 5,
-        year: 2026,
-        eventName: 'Event Photobooth AI',
-        team: [], // Pekerjaan Pribadi
-        location: 'CORO.AI',
-        notes: 'Laporan pekerjaan selesai untuk instalasi dan pendampingan Event Photobooth AI bersama perusahaan partner CORO.AI. Sistem berjalan lancar dan interaksi user sangat tinggi.',
-        photos: [],
-        status: 'Selesai',
-        createdAt: new Date(Date.now() - 3600000 * 24).toISOString() // 1 day ago
-      },
-      {
-        id: 'ev-seed-2',
-        date: '2026-05-25',
-        day: 25,
-        month: 5,
-        year: 2026,
-        eventName: 'Videographer & Editing Only',
-        team: [], // Pekerjaan Pribadi
-        location: 'AVACINEMA',
-        notes: 'Dinas mandiri untuk produksi video berkualitas tinggi serta penyuntingan (editing only) bersama perusahaan AVACINEMA. Berkas final telah diserahkan dan disetujui.',
-        photos: [],
-        status: 'Selesai',
-        createdAt: new Date().toISOString()
-      }
-    ];
-
-    for (const ev of defaultEvents) {
-      await saveEvent(ev);
+  for (const ev of events) {
+    if (ev.id === 'ev-seed-1' || ev.id === 'ev-seed-2') {
+      await deleteEvent(ev.id);
     }
   }
 }
@@ -217,49 +178,4 @@ export async function resetToDefaults(): Promise<void> {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(new Error('Gagal mereset teammates.'));
   });
-
-  // Re-seed
-  const defaults: Teammate[] = [
-    { id: '1', name: 'Senyo (Mandiri)', role: 'Kreator Utama', isActive: true },
-    { id: '2', name: 'Andi Pratama', role: 'Dokumentasi', isActive: true },
-    { id: '3', name: 'Budi Santoso', role: 'Teknisi Lapangan', isActive: true },
-  ];
-  for (const d of defaults) {
-    await saveTeammate(d);
-  }
-
-  const defaultEvents: JobEvent[] = [
-    {
-      id: 'ev-seed-1',
-      date: '2026-05-20',
-      day: 20,
-      month: 5,
-      year: 2026,
-      eventName: 'Event Photobooth AI',
-      team: [], // Pekerjaan Pribadi
-      location: 'CORO.AI',
-      notes: 'Laporan pekerjaan selesai untuk instalasi dan pendampingan Event Photobooth AI bersama perusahaan partner CORO.AI. Sistem berjalan lancar dan interaksi user sangat tinggi.',
-      photos: [],
-      status: 'Selesai',
-      createdAt: new Date(Date.now() - 3600000 * 24).toISOString() // 1 day ago
-    },
-    {
-      id: 'ev-seed-2',
-      date: '2026-05-25',
-      day: 25,
-      month: 5,
-      year: 2026,
-      eventName: 'Videographer & Editing Only',
-      team: [], // Pekerjaan Pribadi
-      location: 'AVACINEMA',
-      notes: 'Dinas mandiri untuk produksi video berkualitas tinggi serta penyuntingan (editing only) bersama perusahaan AVACINEMA. Berkas final telah diserahkan dan disetujui.',
-      photos: [],
-      status: 'Selesai',
-      createdAt: new Date().toISOString()
-    }
-  ];
-
-  for (const ev of defaultEvents) {
-    await saveEvent(ev);
-  }
 }

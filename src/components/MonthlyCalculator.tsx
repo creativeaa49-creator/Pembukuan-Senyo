@@ -52,7 +52,7 @@ export function MonthlyCalculator({ events }: MonthlyCalculatorProps) {
 
   // Google Sheets Sync States
   const [sheetUrl, setSheetUrl] = useState<string>(() => {
-    return localStorage.getItem('senyo_google_sheet_url') || 'https://script.google.com/macros/s/AKfycbxVeO7jxIDa5fwJT9x17vjEnRL2KXj_7kDB36EVjdq7G4CtAfPpl4NwnNrki3jp3KTakQ/exec';
+    return localStorage.getItem('senyo_google_sheet_url') || 'https://script.google.com/macros/s/AKfycbzfX0pOdfCUjCvgN6Z7rbQCpL0_tUb7vNxUihAoYFDj5yKnfHjrgeZcC01B8nHJ_1JlNg/exec';
   });
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error' | ''; message: string }>({ type: '', message: '' });
@@ -115,15 +115,21 @@ export function MonthlyCalculator({ events }: MonthlyCalculatorProps) {
     };
 
     try {
-      // Post using text/plain to avoid preflight CORS request to Google Apps Script Web App
-      await fetch(sheetUrl, {
+      // Post via server-side API proxy to bypass browser security context and CORS constraints
+      const response = await fetch('/api/proxy', {
         method: 'POST',
-        mode: 'no-cors',
         headers: {
-          'Content-Type': 'text/plain',
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          url: sheetUrl,
+          body: payload
+        })
       });
+
+      if (!response.ok) {
+        throw new Error(`Server returned status ${response.status}`);
+      }
 
       setSyncStatus({ 
         type: 'success', 

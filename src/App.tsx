@@ -83,13 +83,15 @@ export default function App() {
   };
 
   const syncPullFromGoogleSheets = async (silent = true): Promise<void> => {
-    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxVeO7jxIDa5fwJT9x17vjEnRL2KXj_7kDB36EVjdq7G4CtAfPpl4NwnNrki3jp3KTakQ/exec';
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzfX0pOdfCUjCvgN6Z7rbQCpL0_tUb7vNxUihAoYFDj5yKnfHjrgeZcC01B8nHJ_1JlNg/exec';
     const storedUrl = localStorage.getItem('senyo_google_sheet_url') || DEFAULT_SHEET_URL;
     if (!storedUrl) return;
 
     if (!silent) setIsLoading(true);
     try {
-      const response = await fetch(`${storedUrl}?t=${Date.now()}`);
+      // Route via server-side API proxy to bypass browser security context and CORS constraints
+      const queryUrl = `${storedUrl}?t=${Date.now()}`;
+      const response = await fetch(`/api/proxy?url=${encodeURIComponent(queryUrl)}`);
       if (!response.ok) throw new Error('Response non-ok');
       
       const resData = await response.json();
@@ -127,7 +129,7 @@ export default function App() {
 
   // Event handlers
   const autoSyncToGoogleSheets = async (event: JobEvent): Promise<boolean> => {
-    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxVeO7jxIDa5fwJT9x17vjEnRL2KXj_7kDB36EVjdq7G4CtAfPpl4NwnNrki3jp3KTakQ/exec';
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzfX0pOdfCUjCvgN6Z7rbQCpL0_tUb7vNxUihAoYFDj5yKnfHjrgeZcC01B8nHJ_1JlNg/exec';
     const storedUrl = localStorage.getItem('senyo_google_sheet_url') || DEFAULT_SHEET_URL;
     if (!storedUrl) return false;
 
@@ -145,15 +147,17 @@ export default function App() {
     };
 
     try {
-      await fetch(storedUrl, {
+      const response = await fetch('/api/proxy', {
         method: 'POST',
-        mode: 'no-cors',
         headers: {
-          'Content-Type': 'text/plain',
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          url: storedUrl,
+          body: payload
+        })
       });
-      return true;
+      return response.ok;
     } catch (err) {
       console.error('Failed to auto-sync with Google Sheets:', err);
       return false;

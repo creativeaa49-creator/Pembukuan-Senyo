@@ -698,7 +698,7 @@ function doPost(e) {
       <style>{`
         @page {
           size: A4;
-          margin: 20mm 15mm 20mm 15mm;
+          margin: 0 !important;
         }
 
         @media print {
@@ -728,17 +728,21 @@ function doPost(e) {
           /* Reset Printable Page Area precisely */
           #a4-printable-sheet {
             display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
             border: none !important;
             box-shadow: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            width: 100% !important;
+            box-sizing: border-box !important;
+            padding: 20mm 15mm !important;
+            margin: 0 auto !important;
+            width: 210mm !important;
+            height: 297mm !important;
             max-width: none !important;
-            height: auto !important;
             min-height: auto !important;
             aspect-ratio: auto !important;
             color: #0f172a !important;
             background-color: white !important;
+            page-break-inside: avoid !important;
           }
 
           /* General printable styles */

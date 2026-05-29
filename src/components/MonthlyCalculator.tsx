@@ -56,6 +56,7 @@ export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlCh
   const [selectedYear, setSelectedYear] = useState<number>(defaultYear);
   const [signerName, setSignerName] = useState<string>('Senyo');
   const [signerRole, setSignerRole] = useState<string>('Kreator Utama / Partner Lapangan');
+  const [copiedWhatsApp, setCopiedWhatsApp] = useState<boolean>(false);
 
   // Load and manage closed book state
   const [closedBooks, setClosedBooks] = useState<Record<string, boolean>>(() => {
@@ -155,6 +156,71 @@ export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlCh
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleCopyWhatsAppText = () => {
+    const formattedDesc = ID_MONTHS[selectedMonth - 1] + ' ' + selectedYear;
+    const statusText = isBookClosed ? "🔒 TUTUP BUKU (FINAL)" : "🔓 BELUM TUTUP BUKU";
+    
+    // Formatting Completed Work list
+    const workItemsText = completedMonthlyEvents.map((e, idx) => {
+      let dispDate = e.date;
+      try {
+        const parts = e.date.split('-');
+        dispDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+      } catch (_) {}
+      return `${idx + 1}. *${e.eventName}*
+   📅 Tanggal: ${dispDate}
+   🏢 Lokasi: ${e.location || 'Pekerjaan Pribadi'}
+   👥 Kru: ${e.team && e.team.length ? e.team.join(', ') : 'Mandiri'}
+   📝 Keterangan: ${e.notes || '-'}`;
+    }).join('\n\n');
+
+    // Formatting Kasbon list
+    const kasbonItemsText = monthlyKasbon.length > 0 ? monthlyKasbon.map((k, idx) => {
+      let dispDate = k.date;
+      try {
+        const parts = k.date.split('-');
+        dispDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+      } catch (_) {}
+      return `${idx + 1}. *Rp ${k.amount.toLocaleString('id-ID')}* - *${k.teammateName}*
+   📅 Tanggal: ${dispDate}
+   💳 Metode: ${k.method}
+   💡 Keperluan: ${k.notes || '-'}`;
+    }).join('\n\n') : 'Nihil / Tidak ada kasbon di bulan ini.';
+
+    const finalWhatsAppText = `📋 *LAPORAN DINAS BULANAN (REKAP SENYO)*
+*Periode*: ${formattedDesc}
+*Pembuat*: ${signerName} (${signerRole})
+*Status*: ${statusText}
+
+=========================
+
+*📊 RINGKASAN REKAP DATA:*
+• Total Pekerjaan Selesai: *${completedMonthlyEvents.length} Job*
+• Total Kasbon Kru Aktif: *Rp ${totalMonthlyKasbon.toLocaleString('id-ID')}*
+
+=========================
+
+*✅ BAGIAN 1: CATATAN GAWEAN LAPANGAN SELESAI ({completedMonthlyEvents.length})*
+
+${workItemsText || 'Nihil / Tidak ada catatan gawean selesai.'}
+
+=========================
+
+*💸 BAGIAN 2: DAFTAR TRANSAKSI KASBON ({monthlyKasbon.length})*
+
+${kasbonItemsText}
+
+=========================
+_Generated via Aplikasi Rekap Dinas Lapangan Senyo_`;
+
+    navigator.clipboard.writeText(finalWhatsAppText).then(() => {
+      setCopiedWhatsApp(true);
+      setTimeout(() => setCopiedWhatsApp(false), 2500);
+    }).catch(err => {
+      console.error("Gagal menyalin teks WA:", err);
+    });
   };
 
   const syncToGoogleSheets = async () => {
@@ -360,18 +426,43 @@ function doPost(e) {
               Rekapitulasi gawean selesai dalam sebulan, buat dokumen rekam dinas cetak standar A4.
             </p>
           </div>
-          <button
-            onClick={handlePrint}
-            disabled={completedMonthlyEvents.length === 0}
-            className={`h-11 px-5 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
-              completedMonthlyEvents.length > 0 
-                ? 'bg-gradient-to-r from-pink-500 to-orange-500 hover:from-pink-600 hover:to-orange-600 text-white shadow-lg shadow-pink-500/10 active:scale-95'
-                : 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed'
-            }`}
-          >
-            <Printer className="w-4 h-4" />
-            <span>Cetak Rekap A4 / PDF</span>
-          </button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleCopyWhatsAppText}
+              disabled={completedMonthlyEvents.length === 0}
+              className={`h-11 px-5 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                completedMonthlyEvents.length > 0 
+                  ? 'bg-slate-950 hover:bg-slate-900 text-emerald-400 border-2 border-emerald-500/30 hover:border-emerald-500/60 shadow-lg active:scale-95'
+                  : 'bg-slate-850 text-slate-600 border border-slate-800 cursor-not-allowed'
+              }`}
+            >
+              {copiedWhatsApp ? (
+                <>
+                  <Check className="w-4 h-4 text-emerald-400 animate-bounce" />
+                  <span>Teks WA Tersalin!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4 text-emerald-400" />
+                  <span>Salin Ringkasan WA</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={handlePrint}
+              disabled={completedMonthlyEvents.length === 0}
+              className={`h-11 px-5 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                completedMonthlyEvents.length > 0 
+                  ? 'bg-gradient-to-r from-pink-500 to-orange-500 hover:from-pink-600 hover:to-orange-600 text-white shadow-lg shadow-pink-500/10 active:scale-95'
+                  : 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed'
+              }`}
+            >
+              <Printer className="w-4 h-4" />
+              <span>Cetak Rekap A4 / PDF</span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -419,7 +510,7 @@ function doPost(e) {
         </div>
 
         {isBookClosed && (
-          <div className="mt-4 p-3.5 bg-rose-505/10 bg-red-500/5 border-2 border-red-500/20 text-red-400 rounded-2xl flex items-center gap-2.5 text-[11px] font-black uppercase tracking-wider animate-scale-up">
+          <div className="mt-4 p-3.5 bg-rose-500/10 bg-red-500/5 border-2 border-red-500/20 text-red-400 rounded-2xl flex items-center gap-2.5 text-[11px] font-black uppercase tracking-wider animate-scale-up">
             <Lock className="w-4 h-4 shrink-0 text-red-500 animate-pulse" />
             <span>Pemberitahuan: Periode {ID_MONTHS[selectedMonth - 1]} {selectedYear} Sudah Tutup Buku (Arsip Dikunci)</span>
           </div>

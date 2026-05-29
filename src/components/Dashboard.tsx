@@ -153,8 +153,8 @@ export default function Dashboard({ events, onSelectEvent }: DashboardProps) {
                     style={{ height: heightPercent }} 
                     className={`w-full max-w-[28px] rounded-t-xl transition-all duration-300 hover:scale-x-110 ${
                       count > 0 
-                        ? 'bg-indigo-505 bg-gradient-to-t from-indigo-600 to-indigo-400 shadow-[0_4px_12px_rgba(99,102,241,0.2)] group-hover:from-pink-500 group-hover:to-pink-400' 
-                        : 'bg-slate-800/60 group-hover:bg-slate-755'
+                        ? 'bg-indigo-500 bg-gradient-to-t from-indigo-600 to-indigo-400 shadow-[0_4px_12px_rgba(99,102,241,0.2)] group-hover:from-pink-500 group-hover:to-pink-400' 
+                        : 'bg-slate-800/60 group-hover:bg-slate-700'
                     }`}
                   />
                   

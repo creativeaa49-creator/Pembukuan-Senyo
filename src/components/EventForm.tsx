@@ -388,7 +388,7 @@ export default function EventForm({
             <button
               type="button"
               onClick={handleAddCustomTeammate}
-              className="h-10 px-4 bg-indigo-600 hover:bg-pink-505 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all shadow-lg"
+              className="h-10 px-4 bg-indigo-600 hover:bg-pink-600 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all shadow-lg"
             >
               <Plus className="w-4 h-4" /> Tambah
             </button>

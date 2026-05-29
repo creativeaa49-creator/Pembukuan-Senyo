@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { JobEvent } from '../types';
+import { JobEvent, Kasbon } from '../types';
 import { pushToSheets } from '../lib/sheetsSync';
 import { 
   Printer, 
@@ -17,13 +17,17 @@ import {
   Check,
   Database,
   FileSpreadsheet,
-  AlertTriangle
+  AlertTriangle,
+  Coins,
+  Lock,
+  Unlock
 } from 'lucide-react';
 
 interface MonthlyCalculatorProps {
   events: JobEvent[];
   sheetUrl?: string;
   onSheetUrlChange?: (url: string) => void;
+  kasbonList?: Kasbon[];
 }
 
 const ID_MONTHS = [
@@ -31,7 +35,7 @@ const ID_MONTHS = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlChange }: MonthlyCalculatorProps) {
+export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlChange, kasbonList = [] }: MonthlyCalculatorProps) {
   // Get all unique years and months from events for selectors
   const years = useMemo(() => {
     const list = events.map(e => e.year);
@@ -52,6 +56,27 @@ export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlCh
   const [selectedYear, setSelectedYear] = useState<number>(defaultYear);
   const [signerName, setSignerName] = useState<string>('Senyo');
   const [signerRole, setSignerRole] = useState<string>('Kreator Utama / Partner Lapangan');
+
+  // Load and manage closed book state
+  const [closedBooks, setClosedBooks] = useState<Record<string, boolean>>(() => {
+    try {
+      const stored = localStorage.getItem('senyo_closed_books');
+      return stored ? JSON.parse(stored) : {};
+    } catch (_) {
+      return {};
+    }
+  });
+
+  const isBookClosed = useMemo(() => {
+    return !!closedBooks[`${selectedYear}-${selectedMonth}`];
+  }, [closedBooks, selectedYear, selectedMonth]);
+
+  const toggleBookStatus = (year: number, monthVal: number) => {
+    const key = `${year}-${monthVal}`;
+    const updated = { ...closedBooks, [key]: !closedBooks[key] };
+    setClosedBooks(updated);
+    localStorage.setItem('senyo_closed_books', JSON.stringify(updated));
+  };
 
   // Google Sheets Sync States
   const [localSheetUrl, setLocalSheetUrl] = useState<string>(() => {
@@ -108,6 +133,25 @@ export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlCh
     });
     return groups;
   }, [completedMonthlyEvents]);
+
+  // Filter kasbon of selected month/year
+  const monthlyKasbon = useMemo(() => {
+    if (!kasbonList) return [];
+    return kasbonList.filter(item => {
+      try {
+        const parts = item.date.split('-');
+        const itemYear = parseInt(parts[0], 10);
+        const itemMonth = parseInt(parts[1], 10);
+        return itemYear === selectedYear && itemMonth === selectedMonth;
+      } catch (_) {
+        return false;
+      }
+    });
+  }, [kasbonList, selectedMonth, selectedYear]);
+
+  const totalMonthlyKasbon = useMemo(() => {
+    return monthlyKasbon.reduce((acc, curr) => acc + curr.amount, 0);
+  }, [monthlyKasbon]);
 
   const handlePrint = () => {
     window.print();
@@ -373,6 +417,13 @@ function doPost(e) {
           </div>
 
         </div>
+
+        {isBookClosed && (
+          <div className="mt-4 p-3.5 bg-rose-505/10 bg-red-500/5 border-2 border-red-500/20 text-red-400 rounded-2xl flex items-center gap-2.5 text-[11px] font-black uppercase tracking-wider animate-scale-up">
+            <Lock className="w-4 h-4 shrink-0 text-red-500 animate-pulse" />
+            <span>Pemberitahuan: Periode {ID_MONTHS[selectedMonth - 1]} {selectedYear} Sudah Tutup Buku (Arsip Dikunci)</span>
+          </div>
+        )}
       </div>
 
       {/* DASHBOARD STATISTICS PREVIEW FOR SELECTED MONTH (Hidden in prints) */}
@@ -563,6 +614,96 @@ function doPost(e) {
         </div>
       )}
 
+      {/* 🔒 KONTROL TUTUP BUKU & STATUS LAPORAN (Hidden in prints) */}
+      <div className="bg-slate-900 border-2 border-slate-800 rounded-3xl p-5 shadow-xl shadow-black/20 border-b-8 border-b-slate-800 print:hidden space-y-4">
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-widest text-slate-100 flex items-center gap-1.5">
+            <Lock className="w-4 h-4 text-pink-500 animate-pulse" />
+            Sistem Kontrol Tutup Buku &amp; Arsip Bulanan ({selectedYear})
+          </h3>
+          <p className="text-[10px] text-slate-400 font-semibold mt-0.5 leading-relaxed">
+            Pantau status laporan dan kunci transaksi kasbulanan secara digital. Buku yang dikunci (Tutup Buku) menandakan seluruh gawean dan kasbon kru telah dinyatakan sah, final, serta siap untuk diajukan ke dinas administrasi.
+          </p>
+        </div>
+
+        {/* 12 Months Status Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {ID_MONTHS.map((monthName, idx) => {
+            const mVal = idx + 1;
+            const key = `${selectedYear}-${mVal}`;
+            const isClosed = !closedBooks ? false : !!closedBooks[key];
+
+            // Count completed jobs for this iteration
+            const mEvents = events.filter(e => e.year === selectedYear && e.month === mVal && e.status === 'Selesai');
+            
+            // Calculate kasbon for this iteration
+            const mKasbon = kasbonList.filter(k => {
+              try {
+                const parts = k.date.split('-');
+                return parseInt(parts[0], 10) === selectedYear && parseInt(parts[1], 10) === mVal;
+              } catch (_) { return false; }
+            });
+            const mKasbonSum = mKasbon.reduce((acc, c) => acc + c.amount, 0);
+
+            return (
+              <div 
+                key={mVal} 
+                className={`p-3 rounded-2xl border-2 flex flex-col justify-between transition-all relative ${
+                  isClosed 
+                    ? 'border-red-950/60 bg-red-950/10 shadow-inner shadow-red-950/20' 
+                    : 'border-slate-800 bg-slate-950 hover:border-slate-800'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-black text-slate-200 truncate">{monthName}</span>
+                    <span className="text-[8px] text-slate-500 font-mono font-bold shrink-0">{selectedYear}</span>
+                  </div>
+
+                  <div className="space-y-1 text-[10px] text-slate-450 font-bold mb-3">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-slate-500 text-[9px] uppercase">Job Beres</span>
+                      <span className="text-slate-300 font-black">{mEvents.length} Job</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-slate-500 text-[9px] uppercase">Gaji Kasbon</span>
+                      <span className="text-orange-400 font-black">Rp {mKasbonSum.toLocaleString('id-ID')}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2 mt-auto pt-2 border-t border-slate-900">
+                  {/* Status Badge */}
+                  <div className="text-center">
+                    <span className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                      isClosed 
+                        ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' 
+                        : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                    }`}>
+                      {isClosed ? <Lock className="w-2.5 h-2.5 shrink-0 text-rose-400" /> : <Unlock className="w-2.5 h-2.5 shrink-0 text-amber-400" />}
+                      <span>{isClosed ? 'Tutup Buku' : 'Belum Tutup'}</span>
+                    </span>
+                  </div>
+
+                  {/* Lock/Unlock Button */}
+                  <button
+                    type="button"
+                    onClick={() => toggleBookStatus(selectedYear, mVal)}
+                    className={`w-full py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider text-center transition-all cursor-pointer ${
+                      isClosed
+                        ? 'bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white'
+                        : 'bg-gradient-to-r from-pink-500 to-orange-500 text-slate-950 hover:opacity-90 font-black shadow-sm'
+                    }`}
+                  >
+                    {isClosed ? 'Buka Buku' : 'Tutup Buku'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* HIGH-PRECISION REPLICA OF A4 REPORT SHEET (Interactive visual canvas & PRINT TARGET) */}
       {completedMonthlyEvents.length > 0 && (
         <div className="space-y-3">
@@ -578,7 +719,7 @@ function doPost(e) {
           {/* Actual Print Sheet Container. Highly optimized styles using pure CSS and Tailwind print variables. */}
           <div 
             id="a4-printable-sheet" 
-            className="w-full max-w-[210mm] mx-auto bg-white text-slate-900 border border-slate-200 rounded-2xl shadow-2xl p-[15mm] sm:p-[20mm] aspect-[1/1.414] overflow-hidden flex flex-col justify-between print:rounded-none print:shadow-none print:border-none print:p-[15mm] print:mx-0 print:w-full print:max-w-none print:min-h-screen relative"
+            className="w-full max-w-[210mm] mx-auto bg-white text-slate-900 border border-slate-200 rounded-2xl shadow-2xl p-[12mm] sm:p-[18mm] min-h-[297mm] h-auto flex flex-col justify-between print:rounded-none print:shadow-none print:border-none print:mx-0 print:w-full print:max-w-none print:min-h-screen relative overflow-visible"
             style={{
               fontFamily: '"Inter", sans-serif',
               color: '#1e293b' // deep slate-800
@@ -589,6 +730,17 @@ function doPost(e) {
               Live A4 Sheet Preview
             </div>
 
+            {/* WATERMARK LOCKED STAMP (Visible if Tudup Buku is true) */}
+            {isBookClosed && (
+              <div className="absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2 border-[5px] border-dashed border-red-500/25 bg-red-100/5 text-[32px] font-black text-red-500/30 uppercase tracking-widest px-8 py-5 rounded-3xl -rotate-12 pointer-events-none select-none flex flex-col items-center justify-center gap-1 z-20 font-mono">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-8 h-8 opacity-45 text-red-500" /> 
+                  <span>ARSIP FINAL</span>
+                </div>
+                <span className="text-xs font-black tracking-widest text-red-500/50">TUTUP BUKU &amp; REKAP SAH</span>
+              </div>
+            )}
+
             <div>
               {/* HEADER AREA */}
               <div className="flex justify-between items-start border-b-4 border-slate-900 pb-5 mb-5">
@@ -596,7 +748,7 @@ function doPost(e) {
                   <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight font-sans">
                     LAPORAN DINAS BULANAN
                   </h1>
-                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mt-0.5">
+                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mt-0.5 animate-pulse">
                     SENYO - RINGKASAN REKAP GAWEAN LAPANGAN
                   </p>
                 </div>
@@ -607,6 +759,11 @@ function doPost(e) {
                   <span className="text-[9px] font-bold text-slate-500 block uppercase tracking-wider">
                     Periode: {ID_MONTHS[selectedMonth - 1]} {selectedYear}
                   </span>
+                  {isBookClosed && (
+                    <span className="text-[8px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded-md inline-block uppercase tracking-wider mt-1">
+                      🔒 CLOSED BOOK
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -621,16 +778,26 @@ function doPost(e) {
                     Jabatan / Rujukan: <span className="text-slate-700">{signerRole}</span>
                   </p>
                 </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">SUB-REKAP KELAR</span>
+                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">REKAP OPERASIONAL &amp; KASBON</span>
                   <p className="text-[11px] font-semibold text-slate-600">
                     Total Beres: <strong className="text-slate-900 font-extrabold">{completedMonthlyEvents.length} Pekerjaan Selesai</strong>
                   </p>
+                  {monthlyKasbon.length > 0 && (
+                    <p className="text-[11px] font-semibold text-slate-700 mt-1 flex justify-between items-center bg-orange-50 px-2 py-0.5 rounded-lg border border-orange-200/50">
+                      <span>Total Kasbon Kru:</span>
+                      <strong className="text-orange-650 font-black">Rp {totalMonthlyKasbon.toLocaleString('id-ID')}</strong>
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {/* DETAILED WORK TABLE */}
+              {/* SECTION I: DETAILED WORK TABLE */}
               <div className="mb-6">
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  Bagian 1: Daftar Catatan Kegiatan Lapangan Selesai ({completedMonthlyEvents.length})
+                </h3>
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b-[3px] border-slate-900 text-slate-800 text-[10px] uppercase tracking-wider font-extrabold">
@@ -666,6 +833,57 @@ function doPost(e) {
                 </table>
               </div>
 
+              {/* SECTION II: DETAILED KASBON TRANSACTIONS */}
+              {monthlyKasbon.length > 0 ? (
+                <div className="mt-8 border-t-2 border-slate-900 pt-5 mb-6">
+                  <div className="flex justify-between items-center mb-2.5">
+                    <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <Coins className="w-4 h-4 text-orange-500 animate-pulse" />
+                      Bagian 2: Lampiran Kasbon &amp; Pinjaman Kru ({monthlyKasbon.length} Transaksi)
+                    </h3>
+                  </div>
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b-[3px] border-slate-900 text-slate-800 text-[10px] uppercase tracking-wider font-extrabold">
+                        <th className="py-2.5 px-2 font-black text-center w-8">No</th>
+                        <th className="py-2.5 px-2 font-black">Tanggal</th>
+                        <th className="py-2.5 px-2 font-black">Nama Kru</th>
+                        <th className="py-2.5 px-2 font-black text-right">Jumlah (RP)</th>
+                        <th className="py-2.5 px-2 font-black text-center">Metode</th>
+                        <th className="py-2.5 px-2 pl-4 font-black">Keterangan Keperluan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {monthlyKasbon.map((kb, idx) => {
+                        let dispKbDate = kb.date;
+                        try {
+                          const parts = kb.date.split('-');
+                          dispKbDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                        } catch (_) {}
+                        return (
+                          <tr key={kb.id} className="text-[11px] font-medium text-slate-600">
+                            <td className="py-3 px-1 text-center font-mono text-slate-400">{idx + 1}</td>
+                            <td className="py-3 px-2 font-mono whitespace-nowrap">{dispKbDate}</td>
+                            <td className="py-3 px-2 font-extrabold text-slate-900 capitalize">{kb.teammateName}</td>
+                            <td className="py-3 px-2 text-right font-mono font-black text-slate-950 whitespace-nowrap">
+                              Rp {kb.amount.toLocaleString('id-ID')}
+                            </td>
+                            <td className="py-3 px-2 text-center text-[9px] font-black uppercase text-slate-600">{kb.method}</td>
+                            <td className="py-3 px-2 pl-4 text-slate-500 italic text-[11px]">{kb.notes || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="mt-8 border-t-2 border-slate-900 pt-5 mb-6 text-center">
+                  <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider py-3 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                    Bagian 2: Nihil. Tidak ada transaksi kasbon aktif terdaftar pada bulan ini.
+                  </p>
+                </div>
+              )}
+
               {/* FORMAL TERMS ACCORDING COMPANY NEED */}
               <div className="text-[10px] text-slate-400 leading-relaxed max-w-lg mb-6 py-2.5 px-4 bg-slate-50 rounded-xl border border-slate-100">
                 <p className="font-semibold block text-slate-500 mb-0.5 uppercase tracking-wide text-[8px]">Ketentuan Pelaporan Dinas:</p>
@@ -674,14 +892,14 @@ function doPost(e) {
             </div>
 
             {/* FORMAL SIGNATURE BLOCKS AT FOOTER */}
-            <div className="flex justify-between items-end border-t border-slate-200 pt-5 mt-auto">
+            <div className="flex justify-between items-end border-t border-slate-200 pt-5 mt-[30px]">
               <div className="text-left">
                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-4">DIVERIFIKASI OLEH</span>
                 <span className="text-[10px] text-slate-300 block line-through">_______________________</span>
                 <span className="text-[9px] text-slate-400 block font-bold font-mono">Manajemen Dinas / HRD</span>
               </div>
               <div className="text-right">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">TANDA TANGAN Pembuat</span>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">TANDA TANGAN PEMBUAT</span>
                 <span className="text-[11px] text-slate-900 block font-black uppercase tracking-tight">({signerName})</span>
                 <span className="text-[9px] text-slate-500 block font-medium max-w-[180px] line-clamp-1 leading-none mt-1">
                   {signerRole}
@@ -698,7 +916,7 @@ function doPost(e) {
       <style>{`
         @page {
           size: A4;
-          margin: 0 !important;
+          margin: 10mm 10mm 10mm 10mm !important;
         }
 
         @media print {
@@ -725,24 +943,23 @@ function doPost(e) {
             width: 100% !important;
           }
 
-          /* Reset Printable Page Area precisely */
+          /* Reset Printable Page Area precisely without forcing mepet to the border */
           #a4-printable-sheet {
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: space-between !important;
+            display: block !important; /* switch from flex to block so multi-pages break naturally */
             border: none !important;
             box-shadow: none !important;
             box-sizing: border-box !important;
-            padding: 20mm 15mm !important;
+            padding: 6mm 5mm 15mm 5mm !important; /* page has safety margins, so layout has beautiful surrounding spaces */
             margin: 0 auto !important;
-            width: 210mm !important;
-            height: 297mm !important;
-            max-width: none !important;
-            min-height: auto !important;
+            width: 100% !important;
+            max-width: 190mm !important; /* matches standard A4 printable horizontal path */
+            height: auto !important; /* height grows naturally if data breaks to multiple pages */
+            min-height: 277mm !important;
             aspect-ratio: auto !important;
-            color: #0f172a !important;
+            color: #0d1527 !important;
             background-color: white !important;
-            page-break-inside: avoid !important;
+            overflow: visible !important;
+            page-break-after: always !important;
           }
 
           /* General printable styles */
@@ -755,6 +972,7 @@ function doPost(e) {
           }
           th, td {
             color: #000000 !important;
+            border-color: #cbd5e1 !important; /* border-slate-300 */
           }
         }
       `}</style>

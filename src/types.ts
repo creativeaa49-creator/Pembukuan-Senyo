@@ -35,6 +35,18 @@ export interface Teammate {
   isActive: boolean;
 }
 
+export type KasbonMethod = 'Transfer BCA' | 'Gopay' | 'Cash' | 'Lainnya';
+
+export interface Kasbon {
+  id: string;
+  date: string; // YYYY-MM-DD
+  teammateName: string;
+  amount: number;
+  method: KasbonMethod;
+  notes: string;
+  createdAt: string;
+}
+
 export interface AppStats {
   totalEvents: number;
   completedEvents: number;

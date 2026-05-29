@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { JobEvent, Teammate } from '../types';
+import { JobEvent, Teammate, Kasbon } from '../types';
 
 const DB_NAME = 'PendataanPekerjaanDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const EVENTS_STORE = 'events';
 const TEAMMATES_STORE = 'teammates';
+const KASBON_STORE = 'kasbon';
 
 function getDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -29,6 +30,9 @@ function getDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(TEAMMATES_STORE)) {
         db.createObjectStore(TEAMMATES_STORE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(KASBON_STORE)) {
+        db.createObjectStore(KASBON_STORE, { keyPath: 'id' });
       }
     };
   });
@@ -177,5 +181,79 @@ export async function resetToDefaults(): Promise<void> {
     const request = store.clear();
     request.onsuccess = () => resolve();
     request.onerror = () => reject(new Error('Gagal mereset teammates.'));
+  });
+
+  // Clear kasbon
+  if (db.objectStoreNames.contains(KASBON_STORE)) {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(KASBON_STORE, 'readwrite');
+      const store = transaction.objectStore(KASBON_STORE);
+      const request = store.clear();
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(new Error('Gagal mereset kasbon.'));
+    });
+  }
+}
+
+export async function getAllKasbon(): Promise<Kasbon[]> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains(KASBON_STORE)) {
+      resolve([]);
+      return;
+    }
+    const transaction = db.transaction(KASBON_STORE, 'readonly');
+    const store = transaction.objectStore(KASBON_STORE);
+    const request = store.getAll();
+
+    request.onsuccess = () => {
+      const result = request.result as Kasbon[];
+      // Sort by date descending, then by createdAt descending
+      result.sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        if (dateB !== dateA) return dateB - dateA;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+      resolve(result);
+    };
+
+    request.onerror = () => {
+      reject(new Error('Gagal memuat daftar kasbon.'));
+    };
+  });
+}
+
+export async function saveKasbon(kasbon: Kasbon): Promise<void> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(KASBON_STORE, 'readwrite');
+    const store = transaction.objectStore(KASBON_STORE);
+    const request = store.put(kasbon);
+
+    request.onsuccess = () => {
+      resolve();
+    };
+
+    request.onerror = () => {
+      reject(new Error('Gagal menyimpan catatan kasbon.'));
+    };
+  });
+}
+
+export async function deleteKasbon(id: string): Promise<void> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(KASBON_STORE, 'readwrite');
+    const store = transaction.objectStore(KASBON_STORE);
+    const request = store.delete(id);
+
+    request.onsuccess = () => {
+      resolve();
+    };
+
+    request.onerror = () => {
+      reject(new Error('Gagal menghapus catatan kasbon.'));
+    };
   });
 }

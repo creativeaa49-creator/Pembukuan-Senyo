@@ -21,9 +21,10 @@ import {
   FileText,
   RefreshCw,
   Cloud,
+  Coins,
   X
 } from 'lucide-react';
-import { JobEvent, Teammate } from './types';
+import { JobEvent, Teammate, Kasbon } from './types';
 import { 
   getAllEvents, 
   saveEvent, 
@@ -32,7 +33,10 @@ import {
   saveTeammate, 
   deleteTeammate, 
   seedInitialDataIfNeeded,
-  resetToDefaults 
+  resetToDefaults,
+  getAllKasbon,
+  saveKasbon,
+  deleteKasbon
 } from './lib/db';
 import { exportToJSONFile } from './lib/utils';
 import { pullFromSheets, pushToSheets, testConnection as testSheetsConnection, parseEventDate } from './lib/sheetsSync';
@@ -43,11 +47,13 @@ import EventList from './components/EventList';
 import EventDetail from './components/EventDetail';
 import TeammateManager from './components/TeammateManager';
 import { MonthlyCalculator } from './components/MonthlyCalculator';
+import KasbonManager from './components/KasbonManager';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'events' | 'kalkulasi'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'events' | 'kalkulasi' | 'kasbon'>('dashboard');
   const [events, setEvents] = useState<JobEvent[]>([]);
   const [teammates, setTeammates] = useState<Teammate[]>([]);
+  const [kasbonList, setKasbonList] = useState<Kasbon[]>([]);
   
   // Navigation & UI focus states
   const [viewingEvent, setViewingEvent] = useState<JobEvent | null>(null);
@@ -108,8 +114,20 @@ export default function App() {
   const loadAllData = async () => {
     const evs = await getAllEvents();
     const tms = await getAllTeammates();
+    const kbs = await getAllKasbon();
     setEvents(evs);
     setTeammates(tms);
+    setKasbonList(kbs);
+  };
+
+  const handleSaveKasbon = async (item: Kasbon) => {
+    await saveKasbon(item);
+    await loadAllData();
+  };
+
+  const handleDeleteKasbon = async (id: string) => {
+    await deleteKasbon(id);
+    await loadAllData();
   };
 
   const testConnection = async () => {
@@ -636,6 +654,17 @@ export default function App() {
                   <FileText className="w-4 h-4 text-emerald-400" />
                   Laporan Bulanan
                 </button>
+                <button
+                  onClick={() => setActiveTab('kasbon')}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
+                    activeTab === 'kasbon'
+                      ? 'bg-slate-800 text-slate-50 border border-slate-700 shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Coins className="w-4 h-4 text-orange-400" />
+                  Catatan Kasbon
+                </button>
               </div>
 
               {/* Master call-to-action */}
@@ -669,11 +698,19 @@ export default function App() {
                   onDeleteEvent={handleDeleteEvent}
                 />
               </div>
-            ) : (
+            ) : activeTab === 'kalkulasi' ? (
               <MonthlyCalculator
                 events={events}
                 sheetUrl={sheetUrl}
                 onSheetUrlChange={handleSaveSheetUrl}
+                kasbonList={kasbonList}
+              />
+            ) : (
+              <KasbonManager
+                kasbonList={kasbonList}
+                teammates={teammates}
+                onSaveKasbon={handleSaveKasbon}
+                onDeleteKasbon={handleDeleteKasbon}
               />
             )}
 

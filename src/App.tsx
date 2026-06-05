@@ -271,6 +271,19 @@ export default function App() {
   };
 
   const handleSaveEvent = async (event: JobEvent) => {
+    // Check if another event exists with the same name, date, and location to prevent "double-double" input
+    const isDuplicate = events.some(e => 
+      e.id !== event.id && 
+      e.eventName.trim().toLowerCase() === event.eventName.trim().toLowerCase() && 
+      e.date === event.date && 
+      e.location.trim().toLowerCase() === event.location.trim().toLowerCase()
+    );
+
+    if (isDuplicate) {
+      alert("⚠️ Peringatan: Catatan pekerjaan dengan nama, lokasi, dan tanggal tersebut sudah terdaftar di aplikasi bray (tidak boleh double-double).");
+      return;
+    }
+
     setIsLoading(true);
     try {
       await saveEvent(event);
@@ -316,6 +329,17 @@ export default function App() {
   };
 
   const handleSaveTeammate = async (teammate: Teammate) => {
+    // Check if another teammate with the same name exists (case-insensitive) to prevent "double-double"
+    const isDuplicate = teammates.some(t => 
+      t.id !== teammate.id && 
+      t.name.trim().toLowerCase() === teammate.name.trim().toLowerCase()
+    );
+
+    if (isDuplicate) {
+      alert(`⚠️ Peringatan: Roster dengan nama "${teammate.name}" sudah terdaftar bray!`);
+      return;
+    }
+
     try {
       await saveTeammate(teammate);
       await loadAllData();

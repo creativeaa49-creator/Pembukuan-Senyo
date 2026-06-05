@@ -42,6 +42,8 @@ export default function EventForm({
   const [photos, setPhotos] = useState<EventPhoto[]>([]);
   const [isCompressing, setIsCompressing] = useState<boolean>(false);
   const [dragOver, setDragOver] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [rate, setRate] = useState<number>(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -58,6 +60,7 @@ export default function EventForm({
       setStatus(initialEvent.status);
       setSelectedTeam(initialEvent.team || []);
       setPhotos(initialEvent.photos || []);
+      setRate(initialEvent.rate || 0);
     } else {
       // Default to today
       const today = new Date();
@@ -65,6 +68,7 @@ export default function EventForm({
       setMonth(today.getMonth() + 1);
       setYear(today.getFullYear());
       setCalendarDate(today.toISOString().substring(0, 10));
+      setRate(0);
     }
   }, [initialEvent]);
 
@@ -106,7 +110,9 @@ export default function EventForm({
     const nameTrimmed = customTeammate.trim();
     if (!nameTrimmed) return;
 
-    if (!selectedTeam.includes(nameTrimmed)) {
+    // Case-insensitive inclusion check to prevent "double-double" team members
+    const lowerTeam = selectedTeam.map(t => t.toLowerCase());
+    if (!lowerTeam.includes(nameTrimmed.toLowerCase())) {
       setSelectedTeam([...selectedTeam, nameTrimmed]);
     }
     
@@ -184,8 +190,9 @@ export default function EventForm({
   };
 
   // Form submit handler
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     
     if (!eventName.trim()) {
       alert('Nama event harus diisi!');
@@ -215,10 +222,18 @@ export default function EventForm({
       notes: notes.trim(),
       photos,
       status,
-      createdAt: initialEvent?.createdAt || new Date().toISOString()
+      createdAt: initialEvent?.createdAt || new Date().toISOString(),
+      rate: Number(rate) || 0
     };
 
-    onSave(submissionEvent);
+    setIsSaving(true);
+    try {
+      await onSave(submissionEvent);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -341,31 +356,51 @@ export default function EventForm({
           </div>
         </div>
 
-        {/* ROW 3: STATUS KEGIATAN */}
-        <div>
-          <label className="block text-xs font-black uppercase tracking-widest text-slate-350 mb-2.5">
-            Status Kegiatan Saat Ini
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            {(['Direncanakan', 'Berlangsung', 'Selesai'] as EventStatus[]).map((st) => (
-              <button
-                key={st}
-                type="button"
-                onClick={() => setStatus(st)}
-                className={`py-3 px-3 rounded-2xl border-2 text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  status === st
-                    ? st === 'Selesai'
-                      ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/15'
-                      : st === 'Berlangsung'
-                      ? 'bg-amber-500 border-amber-500 text-white shadow-lg shadow-amber-500/15'
-                      : 'bg-indigo-650 border-indigo-650 text-white shadow-lg shadow-indigo-650/15'
-                    : 'border-slate-800 bg-slate-950 hover:bg-slate-800 text-slate-400'
-                }`}
-              >
-                {status === st && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                {st}
-              </button>
-            ))}
+        {/* ROW 3: ANGGARAN & STATUS KEGIATAN */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-black uppercase tracking-widest text-slate-350 mb-2">
+              Anggaran / Tarif Pekerjaan (Rp)
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step="50000"
+                placeholder="Contoh: 1500000"
+                value={rate || ''}
+                onChange={(e) => setRate(e.target.value === '' ? 0 : Number(e.target.value))}
+                className="w-full h-12 pl-10 pr-4 border-2 border-slate-800 bg-slate-950 rounded-2xl text-sm font-bold text-slate-100 focus:outline-none focus:border-pink-500 placeholder:text-slate-650 focus:bg-slate-900 transition-all"
+              />
+              <span className="absolute left-4 top-3 text-xs font-black text-pink-500 select-none">Rp</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-black uppercase tracking-widest text-slate-350 mb-2">
+              Status Kegiatan Saat Ini
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {(['Direncanakan', 'Berlangsung', 'Selesai'] as EventStatus[]).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setStatus(st)}
+                  className={`py-3 px-1 rounded-2xl border-2 text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                    status === st
+                      ? st === 'Selesai'
+                        ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/15'
+                        : st === 'Berlangsung'
+                        ? 'bg-amber-500 border-amber-500 text-white shadow-lg shadow-amber-500/15'
+                        : 'bg-indigo-650 border-indigo-650 text-white shadow-lg shadow-indigo-650/15'
+                      : 'border-slate-800 bg-slate-950 hover:bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {status === st && <Check className="w-3.5 h-3.5 " />}
+                  <span>{st}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -560,17 +595,32 @@ export default function EventForm({
           <button
             onClick={onCancel}
             type="button"
-            className="px-6 h-12 border-2 border-slate-800 hover:bg-slate-800 rounded-2xl text-sm font-black text-slate-350 transition-all cursor-pointer text-center uppercase tracking-wider"
+            disabled={isSaving}
+            className="px-6 h-12 border-2 border-slate-800 hover:bg-slate-800 rounded-2xl text-sm font-black text-slate-350 transition-all cursor-pointer text-center uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Batal
           </button>
           
           <button
             type="submit"
-            className="flex-1 py-4 bg-orange-500 hover:bg-orange-600 rounded-3xl text-white font-black text-lg uppercase tracking-tight shadow-xl shadow-orange-500/15 active:scale-95 transition flex items-center justify-center gap-3 cursor-pointer text-center"
+            disabled={isSaving}
+            className={`flex-1 py-4 rounded-3xl text-white font-black text-lg uppercase tracking-tight shadow-xl transition flex items-center justify-center gap-3 select-none ${
+              isSaving
+                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                : 'bg-orange-500 hover:bg-orange-600 shadow-orange-500/15 active:scale-95 cursor-pointer'
+            }`}
           >
-            <span>Simpan Laporan</span>
-            <Check className="w-5 h-5 stroke-[3]" />
+            {isSaving ? (
+              <>
+                <span className="w-5 h-5 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" />
+                <span>Menyimpan Laporan...</span>
+              </>
+            ) : (
+              <>
+                <span>Simpan Laporan</span>
+                <Check className="w-5 h-5 stroke-[3]" />
+              </>
+            )}
           </button>
         </div>
       </form>

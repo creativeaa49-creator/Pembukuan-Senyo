@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Calendar, MapPin, Users, FileText, Camera, ArrowLeft, Printer, Trash, Edit, CheckCircle, ChevronLeft, ChevronRight, X, ShieldAlert, Download } from 'lucide-react';
+import { Calendar, MapPin, Users, FileText, Camera, ArrowLeft, Printer, Trash, Edit, CheckCircle, ChevronLeft, ChevronRight, X, ShieldAlert, Download, Coins } from 'lucide-react';
 import { JobEvent, EventPhoto } from '../types';
 import { formatIndonesianDate, MONTH_NAMES_ID } from '../lib/utils';
 
@@ -136,9 +136,16 @@ export default function EventDetail({
               {event.eventName}
             </h1>
 
-            <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5 bg-slate-950 border border-slate-800/80 px-3 py-1.5 rounded-2xl w-max">
-              <MapPin className="w-4 h-4 text-pink-500 stroke-[2.5]" /> {event.location}
-            </span>
+            <div className="flex flex-wrap gap-2.5">
+              <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5 bg-slate-950 border border-slate-800/80 px-3 py-1.5 rounded-2xl w-max">
+                <MapPin className="w-4 h-4 text-pink-500 stroke-[2.5]" /> {event.location}
+              </span>
+              {event.rate && event.rate > 0 ? (
+                <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1.5 bg-slate-950 border border-emerald-500/20 px-3 py-1.5 rounded-2xl w-max">
+                  <Coins className="w-4 h-4 text-emerald-400 stroke-[2.5]" /> Budget: Rp {event.rate.toLocaleString('id-ID')}
+                </span>
+              ) : null}
+            </div>
           </div>
 
           {/* Status stamp */}

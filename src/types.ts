@@ -26,6 +26,7 @@ export interface JobEvent {
   photos: EventPhoto[];
   status: EventStatus;
   createdAt: string;
+  rate?: number;
 }
 
 export interface Teammate {

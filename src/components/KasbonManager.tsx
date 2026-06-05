@@ -53,6 +53,7 @@ export default function KasbonManager({
   const [successMsg, setSuccessMsg] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterMethod, setFilterMethod] = useState<string>('Semua');
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Format Helper for IDR
   const formatRupiah = (val: number) => {
@@ -77,6 +78,7 @@ export default function KasbonManager({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     setErrorMsg('');
     setSuccessMsg('');
 
@@ -93,6 +95,19 @@ export default function KasbonManager({
       return;
     }
 
+    // Check pre-existence of exact same teammate, date, amount, and notes (Avoid Double entry)
+    const isDuplicate = kasbonList.some(k => 
+      k.teammateName.trim().toLowerCase() === finalName.toLowerCase() && 
+      k.date === date && 
+      k.amount === numericAmount && 
+      k.notes.trim().toLowerCase() === notes.trim().toLowerCase()
+    );
+
+    if (isDuplicate) {
+      setErrorMsg('⚠️ Peringatan: Transaksi kasbon serupa untuk personil ini dengan jumlah & keterangan yang sama sudah terdaftar pada tanggal ini (mencegah data double/ganda).');
+      return;
+    }
+
     const newKasbon: Kasbon = {
       id: 'kb-' + Math.random().toString(36).substring(2, 9),
       date,
@@ -103,6 +118,7 @@ export default function KasbonManager({
       createdAt: new Date().toISOString()
     };
 
+    setIsSaving(true);
     try {
       await onSaveKasbon(newKasbon);
       
@@ -120,6 +136,8 @@ export default function KasbonManager({
       }, 4000);
     } catch (err: any) {
       setErrorMsg('Gagal menyimpan kasbon: ' + err.message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -332,10 +350,24 @@ export default function KasbonManager({
 
               <button
                 type="submit"
-                className="w-full h-11 mt-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black uppercase tracking-wider text-xs rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-orange-500/10 transition-all cursor-pointer"
+                disabled={isSaving}
+                className={`w-full h-11 mt-2 rounded-2xl flex items-center justify-center gap-2 transition-all uppercase tracking-wider text-xs font-black select-none ${
+                  isSaving
+                    ? 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow-lg shadow-orange-500/10 cursor-pointer active:scale-95'
+                }`}
               >
-                <Coins className="w-4 h-4" />
-                Simpan Transaksi Kasbon
+                {isSaving ? (
+                  <>
+                    <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-500 border-t-transparent animate-spin" />
+                    <span>Menyimpan...</span>
+                  </>
+                ) : (
+                  <>
+                    <Coins className="w-4 h-4" />
+                    <span>Simpan Transaksi Kasbon</span>
+                  </>
+                )}
               </button>
 
             </form>

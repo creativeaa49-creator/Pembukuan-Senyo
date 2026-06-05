@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Search, MapPin, Users, Calendar, Filter, Image, LayoutGrid, List, CheckCircle, Clock, AlertCircle, Edit, Trash, ChevronRight, Eye } from 'lucide-react';
+import { Search, MapPin, Users, Calendar, Filter, Image, LayoutGrid, List, CheckCircle, Clock, AlertCircle, Edit, Trash, ChevronRight, Eye, Coins } from 'lucide-react';
 import { JobEvent, EventStatus } from '../types';
 import { MONTH_NAMES_ID, formatIndonesianDate } from '../lib/utils';
 
@@ -243,6 +243,14 @@ export default function EventList({
                       <MapPin className="w-3.5 h-3.5 text-pink-500 flex-shrink-0" />
                       {e.location}
                     </p>
+
+                    {/* Rate / Tarif */}
+                    {e.rate && e.rate > 0 ? (
+                      <p className="text-xs text-emerald-400 font-extrabold flex items-center gap-1.5 leading-none">
+                        <Coins className="w-3.5 h-3.5" />
+                        Rp {e.rate.toLocaleString('id-ID')}
+                      </p>
+                    ) : null}
                   </div>
 
                   {/* Crew list & Action items */}
@@ -349,7 +357,13 @@ export default function EventList({
 
                       {/* Name column */}
                       <td className="py-3.5 px-4 font-black text-slate-100 uppercase tracking-tight text-xs truncate max-w-xs">
-                        {e.eventName}
+                        <div>{e.eventName}</div>
+                        {e.rate && e.rate > 0 ? (
+                          <div className="text-[10px] text-emerald-400 font-extrabold flex items-center gap-1 mt-0.5">
+                            <Coins className="w-3.5 h-3.5" />
+                            <span>Rp {e.rate.toLocaleString('id-ID')}</span>
+                          </div>
+                        ) : null}
                       </td>
 
                       {/* Location column */}

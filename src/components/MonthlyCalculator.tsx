@@ -20,7 +20,8 @@ import {
   AlertTriangle,
   Coins,
   Lock,
-  Unlock
+  Unlock,
+  Users
 } from 'lucide-react';
 
 interface MonthlyCalculatorProps {
@@ -57,6 +58,7 @@ export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlCh
   const [signerName, setSignerName] = useState<string>('Senyo');
   const [signerRole, setSignerRole] = useState<string>('Kreator Utama / Partner Lapangan');
   const [copiedWhatsApp, setCopiedWhatsApp] = useState<boolean>(false);
+  const [copiedSlipName, setCopiedSlipName] = useState<string | null>(null);
 
   // Load and manage closed book state
   const [closedBooks, setClosedBooks] = useState<Record<string, boolean>>(() => {
@@ -154,13 +156,80 @@ export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlCh
     return monthlyKasbon.reduce((acc, curr) => acc + curr.amount, 0);
   }, [monthlyKasbon]);
 
+  const [activeCalcTab, setActiveCalcTab] = useState<'a4' | 'pembayaran'>('a4');
+
+  // Programmatic paycheck & wage sheet calculations
+  const paycheckData = useMemo(() => {
+    const crewMap: Record<string, { jobsCount: number; grossHonor: number; eventsList: string[] }> = {};
+    
+    // Default main signer
+    if (signerName && signerName.trim()) {
+      crewMap[signerName.trim()] = { jobsCount: 0, grossHonor: 0, eventsList: [] };
+    }
+
+    // Process completed events
+    completedMonthlyEvents.forEach(e => {
+      const budget = e.rate || 0;
+      const team = e.team || [];
+      
+      if (team.length === 0) {
+        // Solo event: goes to signer/reporter if exists
+        const mainGuy = (signerName && signerName.trim()) ? signerName.trim() : 'Mandiri';
+        if (!crewMap[mainGuy]) {
+          crewMap[mainGuy] = { jobsCount: 0, grossHonor: 0, eventsList: [] };
+        }
+        crewMap[mainGuy].jobsCount += 1;
+        crewMap[mainGuy].grossHonor += budget;
+        crewMap[mainGuy].eventsList.push(`${e.eventName} (Rp ${budget.toLocaleString('id-ID')})`);
+      } else {
+        // Split event budget equally among crew
+        const share = budget / team.length;
+        team.forEach(name => {
+          const trimmed = name.trim();
+          if (!crewMap[trimmed]) {
+            crewMap[trimmed] = { jobsCount: 0, grossHonor: 0, eventsList: [] };
+          }
+          crewMap[trimmed].jobsCount += 1;
+          crewMap[trimmed].grossHonor += share;
+          crewMap[trimmed].eventsList.push(`${e.eventName} (Rp ${share.toLocaleString('id-ID')})`);
+        });
+      }
+    });
+
+    // Now convert to list and combine with Kasbon info
+    return Object.entries(crewMap).map(([name, data]) => {
+      const teammateKasbonList = monthlyKasbon.filter(k => k.teammateName.trim().toLowerCase() === name.toLowerCase());
+      const totalKasbon = teammateKasbonList.reduce((acc, curr) => acc + curr.amount, 0);
+      const netPay = data.grossHonor - totalKasbon;
+
+      return {
+        name,
+        jobsCount: data.jobsCount,
+        grossHonor: data.grossHonor,
+        eventsList: data.eventsList,
+        totalKasbon,
+        netPay,
+        hasPaid: isBookClosed
+      };
+    });
+  }, [completedMonthlyEvents, monthlyKasbon, signerName, isBookClosed]);
+
+  // Aggregate values
+  const totalGrossHonor = useMemo(() => {
+    return paycheckData.reduce((acc, curr) => acc + curr.grossHonor, 0);
+  }, [paycheckData]);
+
+  const totalNetPay = useMemo(() => {
+    return paycheckData.reduce((acc, curr) => acc + curr.netPay, 0);
+  }, [paycheckData]);
+
   const handlePrint = () => {
     window.print();
   };
 
   const handleCopyWhatsAppText = () => {
     const formattedDesc = ID_MONTHS[selectedMonth - 1] + ' ' + selectedYear;
-    const statusText = isBookClosed ? "🔒 TUTUP BUKU (FINAL)" : "🔓 BELUM TUTUP BUKU";
+    const statusText = isBookClosed ? "🔒 TUTUP BUKU (FINAL & REKAP SAH)" : "🔓 BELUM TUTUP BUKU";
     
     // Formatting Completed Work list
     const workItemsText = completedMonthlyEvents.map((e, idx) => {
@@ -169,7 +238,8 @@ export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlCh
         const parts = e.date.split('-');
         dispDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
       } catch (_) {}
-      return `${idx + 1}. *${e.eventName}*
+      const budgetText = e.rate ? ` [💰 Rp ${e.rate.toLocaleString('id-ID')}]` : '';
+      return `${idx + 1}. *${e.eventName}*${budgetText}
    📅 Tanggal: ${dispDate}
    🏢 Lokasi: ${e.location || 'Pekerjaan Pribadi'}
    👥 Kru: ${e.team && e.team.length ? e.team.join(', ') : 'Mandiri'}
@@ -189,6 +259,15 @@ export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlCh
    💡 Keperluan: ${k.notes || '-'}`;
     }).join('\n\n') : 'Nihil / Tidak ada kasbon di bulan ini.';
 
+    // Formatting Paychecks list
+    const paycheckItemsText = paycheckData.length > 0 ? paycheckData.map((p, idx) => {
+      return `${idx + 1}. *${p.name}*
+   💼 Kehadiran: ${p.jobsCount} Job
+   💰 Honor Kotor Share: Rp ${Math.round(p.grossHonor).toLocaleString('id-ID')}
+   📉 Potongan Kasbon: -Rp ${p.totalKasbon.toLocaleString('id-ID')}
+   💵 Sisa Bersih Dibayar: *Rp ${Math.round(p.netPay).toLocaleString('id-ID')}*`;
+    }).join('\n\n') : 'Nihil / Belum ada personil terdaftar.';
+
     const finalWhatsAppText = `📋 *LAPORAN DINAS BULANAN (REKAP SENYO)*
 *Periode*: ${formattedDesc}
 *Pembuat*: ${signerName} (${signerRole})
@@ -198,7 +277,9 @@ export function MonthlyCalculator({ events, sheetUrl: propSheetUrl, onSheetUrlCh
 
 *📊 RINGKASAN REKAP DATA:*
 • Total Pekerjaan Selesai: *${completedMonthlyEvents.length} Job*
-• Total Kasbon Kru Aktif: *Rp ${totalMonthlyKasbon.toLocaleString('id-ID')}*
+• Total Omset Kegiatan (Tarif): *Rp ${totalGrossHonor.toLocaleString('id-ID')}*
+• Total Kasbon Terpotong: *Rp ${totalMonthlyKasbon.toLocaleString('id-ID')}*
+• Total Sisa Bersih Pembayaran: *Rp ${totalNetPay.toLocaleString('id-ID')}*
 
 =========================
 
@@ -211,6 +292,12 @@ ${workItemsText || 'Nihil / Tidak ada catatan gawean selesai.'}
 *💸 BAGIAN 2: DAFTAR TRANSAKSI KASBON ({monthlyKasbon.length})*
 
 ${kasbonItemsText}
+
+=========================
+
+*💵 BAGIAN 3: RINCIAN BAYARAN & REALISASI GAJI ({paycheckData.length})*
+
+${paycheckItemsText}
 
 =========================
 _Generated via Aplikasi Rekap Dinas Lapangan Senyo_`;
@@ -799,23 +886,205 @@ function doPost(e) {
       {completedMonthlyEvents.length > 0 && (
         <div className="space-y-3">
           
-          {/* Preview banner inside app */}
-          <div className="flex items-center justify-between px-1.5 print:hidden">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
-              <FileText className="w-4.5 h-4.5 text-pink-500 animate-pulse" /> PREVIEW REKAP SHEET A4 UNTUK PERUSAHAAN
-            </span>
-            <span className="text-[10px] text-slate-500 font-bold hidden sm:inline">Ukuran proporsional: A4 Standar (210 x 297 mm)</span>
+          {/* Visual Choice Switcher Tabs */}
+          <div className="flex gap-2 p-1 bg-slate-950 border-2 border-slate-800 rounded-2xl max-w-max print:hidden mb-2">
+            <button
+              onClick={() => setActiveCalcTab('a4')}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeCalcTab === 'a4'
+                  ? 'bg-slate-800 text-slate-100 border border-slate-700 shadow-md shadow-pink-500/5'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <FileSpreadsheet className="w-4 h-4 text-pink-500" />
+              Laporan Cetak A4
+            </button>
+            <button
+              onClick={() => setActiveCalcTab('pembayaran')}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer relative ${
+                activeCalcTab === 'pembayaran'
+                  ? 'bg-slate-800 text-slate-100 border border-slate-700 shadow-md shadow-emerald-500/5'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Coins className="w-4 h-4 text-emerald-400 animate-pulse" />
+              <span>Slip &amp; Gaji Tutup Buku</span>
+              {isBookClosed && (
+                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+              )}
+            </button>
           </div>
 
-          {/* Actual Print Sheet Container. Highly optimized styles using pure CSS and Tailwind print variables. */}
-          <div 
-            id="a4-printable-sheet" 
-            className="w-full max-w-[210mm] mx-auto bg-white text-slate-900 border border-slate-200 rounded-2xl shadow-2xl p-[12mm] sm:p-[18mm] min-h-[297mm] h-auto flex flex-col justify-between print:rounded-none print:shadow-none print:border-none print:mx-0 print:w-full print:max-w-none print:min-h-screen relative overflow-visible"
-            style={{
-              fontFamily: '"Inter", sans-serif',
-              color: '#1e293b' // deep slate-800
-            }}
-          >
+          {activeCalcTab === 'pembayaran' ? (
+            /* 💵 TUTUP BUKU & PEMBAYARAN GAJI KRU PANEL */
+            <div className="bg-slate-900 border-2 border-slate-800 rounded-3xl p-6 shadow-xl space-y-6 print:bg-white print:border-none print:shadow-none">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-slate-800 pb-5">
+                <div>
+                  <h3 className="text-lg font-black text-slate-100 flex items-center gap-2 uppercase tracking-tight">
+                    <Coins className="w-5.5 h-5.5 text-emerald-400" />
+                    Buku Pembayaran &amp; Gaji Kru Selesai
+                  </h3>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-1">
+                    Detail realisasi pembagian upah bersih perorangan untuk bulan <span className="text-pink-500 font-black">{ID_MONTHS[selectedMonth - 1]} {selectedYear}</span>.
+                  </p>
+                </div>
+
+                <div className="flex-shrink-0">
+                  {isBookClosed ? (
+                    <div className="px-4 py-2 bg-emerald-500/10 border-2 border-emerald-500/30 text-emerald-400 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 stroke-[2.5]" />
+                      Lunas &amp; Buku Terkunci
+                    </div>
+                  ) : (
+                    <div className="px-4 py-2 bg-amber-500/10 border-2 border-amber-500/30 text-amber-500 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-1.5">
+                      <Unlock className="w-3.5 h-3.5 stroke-[2.5]" />
+                      Estimasi Belum Diarsip
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* CASHFLOW SUMMARY TIERS */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between">
+                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest leading-none">TOTAL BUDGET BRUTO</span>
+                  <div className="text-base font-black text-indigo-400 tracking-tight mt-1">
+                    Rp {totalGrossHonor.toLocaleString('id-ID')}
+                  </div>
+                  <span className="text-[9px] text-slate-500 font-semibold mt-0.5">Akumulasi anggaran {completedMonthlyEvents.length} pekerjaan selesai.</span>
+                </div>
+
+                <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between">
+                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest leading-none">KASBON TERPOTONG</span>
+                  <div className="text-base font-black text-pink-400 tracking-tight mt-1">
+                    -Rp {totalMonthlyKasbon.toLocaleString('id-ID')}
+                  </div>
+                  <span className="text-[9px] text-slate-500 font-semibold mt-0.5">Total pinjaman/uang muka dibayarkan di muka.</span>
+                </div>
+
+                <div className="bg-emerald-500/5 border-2 border-emerald-500/20 rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden">
+                  <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest leading-none">TOTAL NET GAJI DIBAYAR</span>
+                  <div className="text-xl font-black text-emerald-400 tracking-tight mt-1">
+                    Rp {totalNetPay.toLocaleString('id-ID')}
+                  </div>
+                  <span className="text-[9px] text-emerald-500/80 font-bold mt-0.5 uppercase tracking-wider">
+                    {isBookClosed ? "✅ Telah Lunas Ditransfer" : "🔓 Sisa Siap Ditransfer"}
+                  </span>
+                </div>
+              </div>
+
+              {/* INDIVIDUAL PAYCHECK CARDS */}
+              <div className="space-y-4">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-350 flex items-center gap-1.5 border-b border-slate-800/80 pb-2">
+                  <Users className="w-4 h-4 text-pink-500" /> Rincian Rekening &amp; Hak Penerima ({paycheckData.length} Orang)
+                </h4>
+
+                <div id="payout-roster-group" className="grid grid-cols-1 gap-4">
+                  {paycheckData.map((p, idx) => {
+                    const initials = p.name ? p.name.substring(0, 2).toUpperCase() : 'KR';
+                    const isSignerSelf = signerName && p.name.toLowerCase() === signerName.toLowerCase();
+                    return (
+                      <div key={idx} className="bg-slate-950/40 border border-slate-800 rounded-3xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-slate-700 transition-all">
+                        {/* Teammate Bio */}
+                        <div className="flex items-center gap-3.5 flex-1">
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 border-2 border-slate-800 flex items-center justify-center font-black text-sm text-pink-500 tracking-wider shrink-0">
+                            {initials}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-black text-slate-100 uppercase tracking-tight truncate max-w-[200px]">{p.name}</span>
+                              {isSignerSelf && (
+                                <span className="bg-pink-500/10 text-pink-400 px-2 py-0.5 rounded-md text-[8px] font-black border border-pink-500/20 uppercase tracking-widest shrink-0">PJ Pembuat</span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-bold mt-0.5 truncate">
+                              {p.jobsCount} Kali Terdaftar Lapangan • Sisa Gaji Setelah Kasbon
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Breakdown math details table */}
+                        <div className="w-full md:w-auto flex flex-wrap gap-4 md:gap-8 justify-between text-right">
+                          <div className="text-left md:text-right">
+                            <span className="block text-[8px] font-black text-slate-500 uppercase tracking-widest">BAGIAN BRUTO</span>
+                            <span className="text-xs font-bold text-slate-300">Rp {Math.round(p.grossHonor).toLocaleString('id-ID')}</span>
+                          </div>
+
+                          <div className="text-left md:text-right">
+                            <span className="block text-[8px] font-black text-slate-500 uppercase tracking-widest font-mono">DIPOTONG KASBON</span>
+                            <span className="text-xs font-bold text-pink-400 font-mono">-Rp {p.totalKasbon.toLocaleString('id-ID')}</span>
+                          </div>
+
+                          <div className="text-left md:text-right">
+                            <span className="block text-[8px] font-black text-emerald-400 uppercase tracking-widest">SISA BERSIH DITERIMA</span>
+                            <span className="text-sm font-black text-emerald-400">Rp {Math.round(p.netPay).toLocaleString('id-ID')}</span>
+                          </div>
+                        </div>
+
+                        {/* Slip Copy & Action trigger */}
+                        <div className="w-full md:w-auto flex justify-end gap-2 shrink-0 border-t border-slate-800/60 pt-3 md:pt-0 md:border-none">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const slipText = `💵 *SLIP GAJI BULANAN (REKAP SENYO)*\n*Periode*: ${ID_MONTHS[selectedMonth - 1]} ${selectedYear}\n*Personil*: *${p.name}*\n*Status*: ${isBookClosed ? "✅ LUNAS & DITRANSFER (TUTUP BUKU)" : "⚠️ BELUM TUTUP BUKU (DRAFT)"}\n---------------------------------------------\n• Kehadiran: *${p.jobsCount} Pekerjaan*\n• Honor Kotor Share: *Rp ${Math.round(p.grossHonor).toLocaleString('id-ID')}*\n• Potongan Kasbon: *-Rp ${p.totalKasbon.toLocaleString('id-ID')}*\n---------------------------------------------\n*SISA NET DIBAYAR: Rp ${Math.round(p.netPay).toLocaleString('id-ID')}*\n---------------------------------------------\nTerima kasih atas dedikasinya di lapangan bray! 🙏`;
+                              navigator.clipboard.writeText(slipText).then(() => {
+                                setCopiedSlipName(p.name);
+                                setTimeout(() => setCopiedSlipName(null), 2000);
+                              });
+                            }}
+                            className={`py-2 px-3.5 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all w-full md:w-auto cursor-pointer ${
+                              copiedSlipName === p.name
+                                ? 'bg-emerald-500 border border-emerald-400 text-slate-950 font-black'
+                                : 'bg-slate-900 border-2 border-slate-800 hover:bg-slate-800 text-slate-300'
+                            }`}
+                          >
+                            {copiedSlipName === p.name ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                <span>Tersalin!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5 text-pink-500" />
+                                <span>Salin Slip WA</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* FOOTER TERM WARNING */}
+              <div className="text-[10px] text-slate-400 bg-slate-950/40 border border-slate-800 p-4 rounded-3xl leading-relaxed">
+                <span className="font-black text-slate-300 uppercase tracking-wider block mb-1">DOKUMEN VALID DENGAN MATA UANG RUPIAH (Rp):</span>
+                Gaji dihitung otomatis dengan membagi anggaran event secara merata di antara kru yang bertindak (solo event diberikan 100% kepada PJ pembuat atau dihitung Mandiri). Pinjaman kasbon kru langsung dipotong otomatis dari anggaran sisa bersih untuk meringankan beban pembukuan bendahara. Sisa bersih merupakan nilai mata uang resmi yang sah ditransfer ke personil terdaftar.
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Preview banner inside app */}
+              <div className="flex items-center justify-between px-1.5 print:hidden">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                  <FileText className="w-4.5 h-4.5 text-pink-500 animate-pulse" /> PREVIEW REKAP SHEET A4 UNTUK PERUSAHAAN
+                </span>
+                <span className="text-[10px] text-slate-500 font-bold hidden sm:inline">Ukuran proporsional: A4 Standar (210 x 297 mm)</span>
+              </div>
+
+              {/* Actual Print Sheet Container. Highly optimized styles using pure CSS and Tailwind print variables. */}
+              <div 
+                id="a4-printable-sheet" 
+                className="w-full max-w-[210mm] mx-auto bg-white text-slate-900 border border-slate-200 rounded-2xl shadow-2xl p-[12mm] sm:p-[18mm] min-h-[297mm] h-auto flex flex-col justify-between print:rounded-none print:shadow-none print:border-none print:mx-0 print:w-full print:max-w-none print:min-h-screen relative overflow-visible"
+                style={{
+                  fontFamily: '"Inter", sans-serif',
+                  color: '#1e293b' // deep slate-800
+                }}
+              >
             {/* IN-APP WATERMARK HELPER (Invisible in print, tells developer it's simulation) */}
             <div className="absolute top-2.5 right-2.5 border border-pink-500/20 bg-pink-50 text-[8px] font-black text-pink-500 uppercase tracking-wider px-2 py-0.5 rounded-md print:hidden opacity-75">
               Live A4 Sheet Preview
@@ -1000,6 +1269,8 @@ function doPost(e) {
 
           </div>
 
+        </div>
+          )}
         </div>
       )}
 

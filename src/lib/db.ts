@@ -42,11 +42,32 @@ export async function getAllEvents(): Promise<JobEvent[]> {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(EVENTS_STORE, 'readonly');
-    const store = transaction.objectStore(transaction.objectStoreNames[0]);
+    const store = transaction.objectStore(EVENTS_STORE);
     const request = store.getAll();
 
     request.onsuccess = () => {
-      const result = request.result as JobEvent[];
+      const rawResult = request.result as JobEvent[] || [];
+      const result = rawResult.map(e => {
+        const sanitizedDate = e.date || new Date().toISOString().split('T')[0];
+        const dateParts = sanitizedDate.split('-');
+        
+        return {
+          ...e,
+          eventName: e.eventName || '',
+          location: e.location || '',
+          notes: e.notes || '',
+          team: Array.isArray(e.team) ? e.team : [],
+          photos: Array.isArray(e.photos) ? e.photos : [],
+          status: e.status || 'Selesai',
+          date: sanitizedDate,
+          day: e.day || Number(dateParts[2]) || new Date().getDate(),
+          month: e.month || Number(dateParts[1]) || (new Date().getMonth() + 1),
+          year: e.year || Number(dateParts[0]) || new Date().getFullYear(),
+          createdAt: e.createdAt || new Date().toISOString(),
+          rate: Number(e.rate) || 0
+        };
+      });
+
       // Sort by date descending, then by createdAt descending
       result.sort((a, b) => {
         const dateA = new Date(a.date).getTime();
@@ -105,7 +126,13 @@ export async function getAllTeammates(): Promise<Teammate[]> {
     const request = store.getAll();
 
     request.onsuccess = () => {
-      resolve(request.result as Teammate[]);
+      const raw = request.result as Teammate[] || [];
+      const sanitized = raw.map(t => ({
+        ...t,
+        name: t.name || '',
+        isActive: t.isActive !== undefined ? t.isActive : true
+      }));
+      resolve(sanitized);
     };
 
     request.onerror = () => {
@@ -207,7 +234,15 @@ export async function getAllKasbon(): Promise<Kasbon[]> {
     const request = store.getAll();
 
     request.onsuccess = () => {
-      const result = request.result as Kasbon[];
+      const raw = request.result as Kasbon[] || [];
+      const result = raw.map(k => ({
+        ...k,
+        teammateName: k.teammateName || '',
+        amount: k.amount || 0,
+        notes: k.notes || '',
+        date: k.date || new Date().toISOString().split('T')[0],
+        createdAt: k.createdAt || new Date().toISOString()
+      }));
       // Sort by date descending, then by createdAt descending
       result.sort((a, b) => {
         const dateA = new Date(a.date).getTime();
